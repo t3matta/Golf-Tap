@@ -18,10 +18,12 @@ import {
   roundTotal,
   scoreForDistance,
   shareText,
+  withCountryBonus,
   mulberry32,
   type HoleResult,
 } from "../src/game";
 import { computeStats } from "../src/storage";
+import { countryAt, countryNear } from "../src/geo";
 
 describe("distanceKm", () => {
   it("matches known great-circle distances", () => {
@@ -44,9 +46,13 @@ describe("distanceKm", () => {
 });
 
 describe("scoring", () => {
-  it("gives 100 within the perfect radius and decays monotonically", () => {
+  it("follows MapTap's curve and decays monotonically", () => {
     expect(scoreForDistance(0)).toBe(100);
-    expect(scoreForDistance(10)).toBe(100);
+    expect(scoreForDistance(20)).toBe(100);
+    expect(scoreForDistance(100)).toBe(98);
+    expect(scoreForDistance(1000)).toBe(81);
+    expect(scoreForDistance(5000)).toBe(34);
+    expect(scoreForDistance(16_250)).toBe(0);
     let prev = 100;
     for (let km = 0; km <= 20_000; km += 50) {
       const s = scoreForDistance(km);
@@ -67,11 +73,23 @@ describe("scoring", () => {
 
   it("maps points to ratings", () => {
     expect(ratingFor(100).key).toBe("ace");
-    expect(ratingFor(90).key).toBe("eagle");
-    expect(ratingFor(89).key).toBe("birdie");
-    expect(ratingFor(55).key).toBe("par");
-    expect(ratingFor(54).key).toBe("bogey");
-    expect(ratingFor(0).key).toBe("lost");
+    expect(ratingFor(95).key).toBe("eagle");
+    expect(ratingFor(94).key).toBe("birdie");
+    expect(ratingFor(70).key).toBe("par");
+    expect(ratingFor(69).key).toBe("bogey");
+    expect(ratingFor(24).key).toBe("lost");
+  });
+
+  it("boosts a right-country guess without ever lowering or over-lifting it", () => {
+    expect(withCountryBonus(0, true)).toBe(25);
+    expect(withCountryBonus(60, true)).toBe(70);
+    expect(withCountryBonus(80, true)).toBe(80);
+    expect(withCountryBonus(92, true)).toBe(92);
+    expect(withCountryBonus(60, false)).toBe(60);
+    for (let p = 0; p <= 100; p++) {
+      expect(withCountryBonus(p, true)).toBeGreaterThanOrEqual(p);
+      expect(withCountryBonus(p, true)).toBeLessThanOrEqual(Math.max(p, 80));
+    }
   });
 
   it("weights later holes and tops out at 1000", () => {
@@ -79,6 +97,20 @@ describe("scoring", () => {
     expect(MAX_TOTAL).toBe(1000);
     const perfect: HoleResult[] = MULTIPLIERS.map((_, i) => ({ courseId: `c${i}`, guess: [0, 0], distanceKm: 0, points: 100 }));
     expect(roundTotal(perfect)).toBe(1000);
+  });
+});
+
+describe("countries", () => {
+  it("finds the country under a point", () => {
+    expect(countryAt([-82.02, 33.5])).toBe("840"); // Augusta, United States
+    expect(countryAt([-2.81, 56.35])).toBe("826"); // St Andrews, United Kingdom
+    expect(countryAt([145.03, -37.97])).toBe("036"); // Melbourne, Australia
+    expect(countryAt([-30, 30])).toBeNull(); // mid-Atlantic
+  });
+
+  it("places every course in a country, so the bonus can apply", () => {
+    const missing = COURSES.filter((c) => countryNear([c.lon, c.lat]) === null).map((c) => c.id);
+    expect(missing).toEqual([]);
   });
 });
 
@@ -164,14 +196,14 @@ describe("daily puzzle", () => {
 });
 
 describe("sharing & formatting", () => {
-  it("builds a compact share string", () => {
-    const pts = [100, 81, 62, 40, 10];
+  it("builds a MapTap-style share string", () => {
+    const pts = [100, 88, 72, 50, 10];
     const results: HoleResult[] = pts.map((p, i) => ({ courseId: `c${i}`, guess: [0, 0], distanceKm: 1, points: p }));
-    const text = shareText({ puzzleNumber: 12, results, url: "https://example.com/golftap/" });
+    const text = shareText({ date: new Date(2026, 8, 30), results, url: "https://example.com/golftap/" });
     expect(text).toBe(
-      ["GolfTap #12 ⛳ 455/1000", "🏆100 🐦81 ⛳62×2 🟡40×3 💦10×3", "https://example.com/golftap/"].join("\n"),
+      ["GolfTap September 30", "100🏆 88🐦 72⛳ 50🟡 10💦", "Final score: 512", "https://example.com/golftap/"].join("\n"),
     );
-    expect(shareText({ puzzleNumber: null, results })).toMatch(/^GolfTap practice/);
+    expect(shareText({ date: null, results })).toMatch(/^GolfTap practice round\n/);
   });
 
   it("formats distances", () => {

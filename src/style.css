@@ -797,15 +797,61 @@ button {
   color: var(--club-ink);
 }
 
-.units {
+.setting {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-top: 20px;
-  padding-top: 14px;
+  gap: 16px;
+  padding: 12px 0;
   border-top: 1px solid var(--rule);
+  color: var(--ink);
+}
+
+.setting-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.setting-text small {
+  font-size: 13px;
   color: var(--ink-2);
+}
+
+.switch {
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 46px;
+  height: 28px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--rule);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.switch::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s;
+}
+
+.switch:checked {
+  background: var(--club);
+}
+
+.switch:checked::before {
+  transform: translateX(18px);
 }
 
 .seg {

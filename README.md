@@ -2,11 +2,14 @@
 
 A daily geography game about golf courses, inspired by [MapTap](https://maptap.gg).
 
-Every day there are five golf courses from around the world, the same for every player. Spin the globe, tap where you think each course is, and lock in your guess. The closer your ball lands to the flag, the more points you get.
+Every day there are five golf courses from around the world, the same for every player. Spin the globe and tap where you think each course is. Your first tap is your guess, as in MapTap. The closer your ball lands to the flag, the more points you get. Players who prefer a two-step "place, then lock it in" flow can turn on **Confirm each guess** in Settings.
+
+Taps that stop a spinning globe don't count, and on touch screens neither do taps within half a second of a drag or pinch, so spinning the globe doesn't place a ball by accident.
 
 ## How scoring works
 
-- Each hole scores 0–100 by great-circle distance: a full 100 within ~17 km, falling off exponentially (about 50 points at 1,000 km).
+- Each hole scores 0–100 by great-circle distance on MapTap's curve, `100 × e^(−3.5 × km / 16,250)`: about 98 at 100 km, 81 at 1,000 km and 34 at 5,000 km, and 0 beyond 16,250 km.
+- Landing in the right country guarantees a boost, also as in MapTap. The score is rescaled from 25 up, capped at 80, and never lowered.
 - Later holes count more, like playing from the back tees:
 
   | Hole | Tees  | Multiplier |

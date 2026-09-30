@@ -144,6 +144,8 @@ const MIN_ZOOM = 0.85;
 const MAX_ZOOM = 90;
 const TAP_SLOP_PX = 8;
 const TAP_MAX_MS = 700;
+/** Touch taps this soon after a drag or pinch are treated as part of it, not a guess. */
+const TAP_GUARD_MS = 500;
 
 interface Flight {
   start: number;
@@ -197,6 +199,7 @@ export class Globe {
   private coasting = false;
   private lastMoveAt = 0;
   private showCrosshair = false;
+  private lastGestureEnd = -Infinity;
 
   private pointers = new Map<number, { x: number; y: number }>();
   private gesture: {
@@ -205,6 +208,8 @@ export class Globe {
     startTime: number;
     moved: boolean;
     multi: boolean;
+    /** Started while the globe was still moving, so it can't count as a tap. */
+    blocked: boolean;
     pinchDist: number;
     pinchZoom: number;
     mid: { x: number; y: number };
@@ -441,6 +446,12 @@ export class Globe {
   private onPointerDown(e: PointerEvent): void {
     if (e.pointerType === "mouse" && e.button !== 0) return;
     this.canvas.setPointerCapture(e.pointerId);
+    // A tap that stops a spinning globe, or lands right after a touch drag, is a
+    // mis-tap rather than a guess.
+    const blocked =
+      this.coasting ||
+      !!this.flight ||
+      (e.pointerType !== "mouse" && performance.now() - this.lastGestureEnd < TAP_GUARD_MS);
     this.stopMotion();
     this.showCrosshair = false;
     const p = this.local(e);
@@ -452,6 +463,7 @@ export class Globe {
         startTime: performance.now(),
         moved: false,
         multi: false,
+        blocked,
         pinchDist: 0,
         pinchZoom: this.zoom,
         mid: p,
@@ -511,8 +523,9 @@ export class Globe {
     this.gesture = null;
     this.canvas.classList.remove("is-dragging");
 
+    if (g.moved || g.multi) this.lastGestureEnd = performance.now();
     const quick = performance.now() - g.startTime < TAP_MAX_MS;
-    if (!cancelled && !g.moved && !g.multi && quick) {
+    if (!cancelled && !g.moved && !g.multi && !g.blocked && quick) {
       this.tap(p.x, p.y);
       return;
     }

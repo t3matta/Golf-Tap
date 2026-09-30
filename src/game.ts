@@ -7,10 +7,14 @@ export const HOLES_PER_ROUND = 5;
 export const MULTIPLIERS = [1, 1, 2, 3, 3] as const;
 export const MAX_TOTAL = MULTIPLIERS.reduce((sum, m) => sum + 100 * m, 0);
 
-/** Guesses within this distance score a full 100. */
-export const PERFECT_RADIUS_KM = 10;
-/** e-folding distance of the score curve: every extra ~1,500 km cuts the score by ~63%. */
-export const DECAY_KM = 1500;
+// Scoring follows MapTap's curve: points fall off exponentially with distance and hit
+// zero at SCORE_RANGE_KM. Roughly 98 at 100 km, 81 at 1,000 km, 34 at 5,000 km.
+export const SCORE_RANGE_KM = 16_250;
+export const DECAY_KM = SCORE_RANGE_KM / 3.5;
+/** Tapping inside the right country lifts the score to at least this… */
+export const COUNTRY_FLOOR = 25;
+/** …scaling up with accuracy, but the bonus never lifts a score above this. */
+export const COUNTRY_BONUS_CAP = 80;
 
 /** Day 1 of the daily puzzle, local calendar date. */
 export const EPOCH = { year: 2026, month: 9, day: 30 };
@@ -28,13 +32,23 @@ export function distanceKm(a: LonLat, b: LonLat): number {
 }
 
 export function scoreForDistance(km: number): number {
-  if (km <= PERFECT_RADIUS_KM) return 100;
-  return Math.round(100 * Math.exp(-(km - PERFECT_RADIUS_KM) / DECAY_KM));
+  if (km >= SCORE_RANGE_KM) return 0;
+  return Math.round(100 * Math.exp(-km / DECAY_KM));
 }
 
-/** Largest distance that still earns `points`. */
+/** Largest distance that still earns `points` from distance alone. */
 export function distanceForScore(points: number): number {
-  return PERFECT_RADIUS_KM + DECAY_KM * Math.log(100 / (points - 0.5));
+  return DECAY_KM * Math.log(100 / (points - 0.5));
+}
+
+/**
+ * Rescales a distance score into [COUNTRY_FLOOR, 100] when the ball landed in the
+ * right country, capped at COUNTRY_BONUS_CAP. Never lowers a score.
+ */
+export function withCountryBonus(points: number, sameCountry: boolean): number {
+  if (!sameCountry) return points;
+  const boosted = COUNTRY_FLOOR + (points / 100) * (100 - COUNTRY_FLOOR);
+  return Math.round(Math.max(points, Math.min(boosted, COUNTRY_BONUS_CAP)));
 }
 
 export interface Rating {
@@ -47,11 +61,11 @@ export interface Rating {
 // Ordered best to worst. `min` is the lowest points total that earns the rating.
 export const RATINGS: Rating[] = [
   { key: "ace", label: "Hole-in-one", emoji: "🏆", min: 100 },
-  { key: "eagle", label: "Eagle", emoji: "🦅", min: 90 },
-  { key: "birdie", label: "Birdie", emoji: "🐦", min: 75 },
-  { key: "par", label: "Par", emoji: "⛳", min: 55 },
-  { key: "bogey", label: "Bogey", emoji: "🟡", min: 35 },
-  { key: "double", label: "Double bogey", emoji: "🟠", min: 15 },
+  { key: "eagle", label: "Eagle", emoji: "🦅", min: 95 },
+  { key: "birdie", label: "Birdie", emoji: "🐦", min: 85 },
+  { key: "par", label: "Par", emoji: "⛳", min: 70 },
+  { key: "bogey", label: "Bogey", emoji: "🟡", min: 50 },
+  { key: "double", label: "Double bogey", emoji: "🟠", min: 25 },
   { key: "lost", label: "Lost ball", emoji: "💦", min: 0 },
 ];
 
@@ -176,25 +190,27 @@ export interface HoleResult {
   courseId: string;
   guess: LonLat;
   distanceKm: number;
+  /** Final points for the hole, before its multiplier (country bonus included). */
   points: number;
+  /** The ball landed in the course's country. */
+  sameCountry?: boolean;
 }
 
 export function roundTotal(results: HoleResult[]): number {
   return results.reduce((sum, r, i) => sum + r.points * MULTIPLIERS[i], 0);
 }
 
-export function shareText(opts: {
-  puzzleNumber: number | null;
-  results: HoleResult[];
-  url?: string;
-}): string {
-  const total = roundTotal(opts.results);
-  const title = opts.puzzleNumber === null ? "GolfTap practice" : `GolfTap #${opts.puzzleNumber}`;
-  const holes = opts.results
-    .map((r, i) => {
-      const m = MULTIPLIERS[i];
-      return `${ratingFor(r.points).emoji}${r.points}${m > 1 ? `×${m}` : ""}`;
-    })
-    .join(" ");
-  return [`${title} ⛳ ${total}/${MAX_TOTAL}`, holes, opts.url].filter(Boolean).join("\n");
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/**
+ * MapTap-style share text:
+ *   GolfTap September 30
+ *   100🏆 81🐦 62⛳ 40🟡 10💦
+ *   Final score: 455
+ *   https://…
+ */
+export function shareText(opts: { date: Date | null; results: HoleResult[]; url?: string }): string {
+  const title = opts.date ? `GolfTap ${MONTHS[opts.date.getMonth()]} ${opts.date.getDate()}` : "GolfTap practice round";
+  const holes = opts.results.map((r) => `${r.points}${ratingFor(r.points).emoji}`).join(" ");
+  return [title, holes, `Final score: ${roundTotal(opts.results)}`, opts.url].filter(Boolean).join("\n");
 }

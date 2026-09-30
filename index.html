@@ -42,7 +42,7 @@
           <button class="icon-btn" id="btn-mode" type="button" aria-label="Play a practice round" title="Practice round">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6" /><path d="M18 3v4h-4M6 21v-4h4" /></svg>
           </button>
-          <button class="icon-btn" id="btn-stats" type="button" aria-label="Your statistics" title="Statistics">
+          <button class="icon-btn" id="btn-stats" type="button" aria-label="Your record and settings" title="Record and settings">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V4M19 20v-6" /></svg>
           </button>
           <button class="icon-btn" id="btn-help" type="button" aria-label="How to play" title="How to play">
@@ -91,8 +91,8 @@
       <h2 id="help-title">How to play</h2>
       <ol class="steps">
         <li><b>Read the course.</b> Every day there are five famous golf courses, the same for every player.</li>
-        <li><b>Spin and zoom the globe,</b> then tap where you think the course is. Tap again to move your ball.</li>
-        <li><b>Lock it in.</b> The flag drops on the real spot. The closer your ball, the more points, up to 100.</li>
+        <li><b>Spin and zoom the globe,</b> then tap where you think the course is. Your first tap is your guess, so spin first and tap once. Prefer a confirm step? Turn on <i>Confirm each guess</i> in Settings.</li>
+        <li><b>Watch the flag drop</b> on the real spot. The closer your ball, the more points, up to 100.</li>
         <li><b>The back tees count more.</b> Holes 1–2 play from the white tees (×1), hole 3 from the blue tees (×2), and holes 4–5 from the tips (×3). A perfect round is 1,000.</li>
       </ol>
       <h3>Scoring</h3>
@@ -100,7 +100,7 @@
         <thead><tr><th scope="col">Result</th><th scope="col">Points</th><th scope="col">Ball within</th></tr></thead>
         <tbody></tbody>
       </table>
-      <p class="fine">A new set of courses tees off at midnight, your local time.</p>
+      <p class="fine">Land in the right country and you get at least 25 points, rising with accuracy up to 80. A new set of courses tees off at midnight, your local time.</p>
       <button class="btn primary" type="button" data-close autofocus>Tee off</button>
     </dialog>
 
@@ -110,12 +110,20 @@
       <dl class="stat-row" id="stat-row"></dl>
       <h3>Daily scores</h3>
       <div class="dist" id="dist"></div>
-      <div class="units">
+      <h3>Settings</h3>
+      <div class="setting">
         <span id="units-label">Distances in</span>
         <div class="seg" role="radiogroup" aria-labelledby="units-label">
           <button type="button" role="radio" data-units="km" id="units-km">km</button>
           <button type="button" role="radio" data-units="mi" id="units-mi">miles</button>
         </div>
+      </div>
+      <div class="setting">
+        <label class="setting-text" for="confirm-guess">
+          <span>Confirm each guess</span>
+          <small>Place your ball, then press Lock it in. When off, your first tap is your guess.</small>
+        </label>
+        <input type="checkbox" class="switch" id="confirm-guess" role="switch" />
       </div>
     </dialog>
 

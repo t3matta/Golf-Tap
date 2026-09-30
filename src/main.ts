@@ -18,6 +18,7 @@ import {
   roundTotal,
   scoreForDistance,
   shareText,
+  withCountryBonus,
   type HoleResult,
   type LonLat,
   type Rating,
@@ -25,6 +26,7 @@ import {
 } from "./game";
 import * as store from "./storage";
 import { Globe, type Pin } from "./globe";
+import { countryAt, countryNear } from "./geo";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -60,6 +62,7 @@ const el = {
   statRow: $("stat-row"),
   dist: $("dist"),
   unitButtons: [$<HTMLButtonElement>("units-km"), $<HTMLButtonElement>("units-mi")],
+  confirmToggle: $<HTMLInputElement>("confirm-guess"),
   dlgCard: $<HTMLDialogElement>("dlg-card"),
   scDate: $("sc-date"),
   scTable: $("sc-table"),
@@ -89,6 +92,8 @@ interface Session {
 const byId = new Map(COURSES.map((c) => [c.id, c]));
 const defaultUnits: Units = /^en-(US|LR|MM)$/i.test(navigator.language) ? "mi" : "km";
 let units: Units = store.loadUnits() ?? defaultUnits;
+/** Off (default): the first tap is the guess. On: tap to place, then "Lock it in". */
+let confirmGuesses = store.loadConfirmGuesses();
 
 let day = makeDay(new Date());
 let session: Session;
@@ -106,6 +111,10 @@ const globe = new Globe(el.canvas);
 globe.onTap = (p) => {
   if (session.phase !== "aim" && session.phase !== "placed") return;
   session.pending = p;
+  if (!confirmGuesses) {
+    lockIn();
+    return;
+  }
   session.phase = "placed";
   globe.setPending(p);
   renderCard();
@@ -114,6 +123,12 @@ globe.onTap = (p) => {
 // ── Helpers ────────────────────────────────────────────────────
 
 const answerOf = (c: Course): LonLat => [c.lon, c.lat];
+
+const courseCountries = new Map<string, string | null>();
+function countryOfCourse(c: Course): string | null {
+  if (!courseCountries.has(c.id)) courseCountries.set(c.id, countryNear(answerOf(c)));
+  return courseCountries.get(c.id) ?? null;
+}
 
 function teeFor(multiplier: number): { key: string; name: string } {
   if (multiplier >= 3) return { key: "black", name: "The tips" };
@@ -138,7 +153,8 @@ function markClass(r: Rating): string {
   }
 }
 
-const ratingTone = (r: Rating) => (r.min >= 75 ? "under" : r.min >= 55 ? "" : "over");
+const ratingTone = (r: Rating) =>
+  r.key === "ace" || r.key === "eagle" || r.key === "birdie" ? "under" : r.key === "par" ? "" : "over";
 
 function currentIndex(): number {
   const n = session.results.length;
@@ -226,6 +242,7 @@ function renderCard(): void {
         : `Out of ${MAX_TOTAL.toLocaleString("en-US")}. Practice rounds don't count toward your record.`;
     el.result.hidden = true;
     el.hint.textContent = "";
+    el.go.hidden = false;
     el.go.disabled = false;
     el.go.textContent = "Scorecard";
     return;
@@ -252,15 +269,23 @@ function renderCard(): void {
     el.points.textContent = String(r.points);
     el.pointsX.textContent = m > 1 ? `× ${m} = ${r.points * m}` : "";
     el.where.textContent = `${course.place}, ${course.country}`;
-    el.distance.textContent = `${formatDistance(r.distanceKm, units)} from your ball`;
+    const bonus = r.points - scoreForDistance(r.distanceKm);
+    const countryNote = r.sameCountry ? (bonus > 0 ? ` · right country, +${bonus}` : " · right country") : "";
+    el.distance.textContent = `${formatDistance(r.distanceKm, units)} from your ball${countryNote}`;
     el.hint.textContent = "";
+    el.go.hidden = false;
     el.go.disabled = false;
     el.go.textContent = idx + 1 < HOLES_PER_ROUND ? "Next hole" : "Scorecard";
-  } else {
+  } else if (confirmGuesses) {
     el.result.hidden = true;
     el.hint.textContent = phase === "placed" ? "Tap again to move your ball." : "Tap the globe to drop your ball.";
+    el.go.hidden = false;
     el.go.disabled = phase !== "placed";
     el.go.textContent = "Lock it in";
+  } else {
+    el.result.hidden = true;
+    el.hint.textContent = "Tap where you think the course is. Your first tap is your guess.";
+    el.go.hidden = true;
   }
 }
 
@@ -304,6 +329,7 @@ function renderStats(): void {
       .join("");
   }
   for (const b of el.unitButtons) b.setAttribute("aria-checked", String(b.dataset.units === units));
+  el.confirmToggle.checked = confirmGuesses;
 }
 
 function renderScorecard(): void {
@@ -417,13 +443,21 @@ function startPractice(): void {
 }
 
 function lockIn(): void {
-  if (session.phase !== "placed" || !session.pending) return;
+  if ((session.phase !== "aim" && session.phase !== "placed") || !session.pending) return;
   const idx = session.results.length;
   const course = session.courses[idx];
   const guess = session.pending;
   const answer = answerOf(course);
-  const km = distanceKm(guess, answer);
-  session.results.push({ courseId: course.id, guess, distanceKm: Math.round(km * 10) / 10, points: scoreForDistance(km) });
+  const km = Math.round(distanceKm(guess, answer) * 10) / 10;
+  const target = countryOfCourse(course);
+  const sameCountry = target !== null && countryAt(guess) === target;
+  session.results.push({
+    courseId: course.id,
+    guess,
+    distanceKm: km,
+    points: withCountryBonus(scoreForDistance(km), sameCountry),
+    sameCountry,
+  });
   session.phase = "revealed";
   session.pending = null;
 
@@ -479,7 +513,7 @@ function openScorecard(): void {
 
 async function shareResult(): Promise<void> {
   const text = shareText({
-    puzzleNumber: session.mode === "daily" ? session.puzzleNumber : null,
+    date: session.mode === "daily" ? session.date : null,
     results: session.results,
     url: shareUrl(),
   });
@@ -559,6 +593,18 @@ for (const b of el.unitButtons) {
     renderCard();
   });
 }
+
+el.confirmToggle.addEventListener("change", () => {
+  confirmGuesses = el.confirmToggle.checked;
+  store.saveConfirmGuesses(confirmGuesses);
+  // A ball placed under confirm mode is dropped when switching back to instant taps.
+  if (!confirmGuesses && session.phase === "placed") {
+    session.phase = "aim";
+    session.pending = null;
+    globe.setPending(null);
+  }
+  renderCard();
+});
 
 for (const dlg of [el.dlgHelp, el.dlgStats, el.dlgCard]) {
   dlg.addEventListener("click", (e) => {

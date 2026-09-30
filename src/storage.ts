@@ -90,5 +90,8 @@ export function computeStats(history: History, todayPuzzle: number): Stats {
 export const loadUnits = (): Units | null => read<Units | null>("units", null);
 export const saveUnits = (units: Units): void => write("units", units);
 
+export const loadConfirmGuesses = (): boolean => read<boolean>("confirm-guesses", false);
+export const saveConfirmGuesses = (on: boolean): void => write("confirm-guesses", on);
+
 export const hasSeenHelp = (): boolean => read<boolean>("seen-help", false);
 export const markHelpSeen = (): void => write("seen-help", true);
