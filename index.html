@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>GolfTap</title>
+    <meta name="description" content="A daily geography game: find five of the world's golf courses on a spinning globe." />
+    <meta name="theme-color" content="#1d5a3c" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%231d5a3c'/%3E%3Cpath d='M12 7v18' stroke='%23fff' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M13 7l11 3.5L13 14z' fill='%23f0b92a'/%3E%3Cellipse cx='12' cy='25' rx='4' ry='1.5' fill='%23fff' opacity='.6'/%3E%3C/svg%3E"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Caveat:wght@600;700&family=Figtree:wght@400;500;600;700&display=swap"
+    />
+  </head>
+  <body>
+    <div class="app">
+      <canvas
+        id="globe"
+        class="globe"
+        tabindex="0"
+        aria-label="Globe. Drag to spin, pinch or scroll to zoom, tap to drop your ball. Keyboard: arrow keys spin, plus and minus zoom, Enter drops your ball at the crosshair."
+      ></canvas>
+
+      <header class="topbar" id="topbar">
+        <div class="brand">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <circle cx="16" cy="16" r="15" class="brand-disc" />
+            <path d="M12 7v18" class="brand-pole" />
+            <path d="M13 7l11 3.5L13 14z" class="brand-flag" />
+          </svg>
+          <div class="brand-text">
+            <span class="wordmark">GolfTap</span>
+            <span class="round-tag" id="round-tag">No. 1</span>
+          </div>
+        </div>
+        <nav class="actions" aria-label="Game menu">
+          <button class="icon-btn" id="btn-mode" type="button" aria-label="Play a practice round" title="Practice round">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6" /><path d="M18 3v4h-4M6 21v-4h4" /></svg>
+          </button>
+          <button class="icon-btn" id="btn-stats" type="button" aria-label="Your statistics" title="Statistics">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V4M19 20v-6" /></svg>
+          </button>
+          <button class="icon-btn" id="btn-help" type="button" aria-label="How to play" title="How to play">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.2 9a3 3 0 1 1 4.3 2.7c-.9.5-1.5 1.1-1.5 2.1V15" /><path d="M12 18.6v.1" /></svg>
+          </button>
+        </nav>
+      </header>
+
+      <div class="zoom" role="group" aria-label="Zoom">
+        <button type="button" id="zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button>
+        <button type="button" id="zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /></svg></button>
+        <button type="button" id="zoom-reset" aria-label="Zoom out to the whole globe"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="M4 12h16M12 4c2.5 2.5 2.5 13.5 0 16M12 4c-2.5 2.5-2.5 13.5 0 16" /></svg></button>
+      </div>
+
+      <section class="card" id="card" aria-labelledby="course-name">
+        <div class="card-head">
+          <div class="hole">
+            <span class="tee" id="tee" aria-hidden="true"></span>
+            <span id="hole-label">Hole 1</span>
+            <span class="tee-name" id="tee-name">White tees</span>
+          </div>
+          <ol class="pips" id="pips" aria-label="Holes played"></ol>
+        </div>
+        <h1 class="course" id="course-name">Loading the course list…</h1>
+        <p class="clue" id="clue"></p>
+
+        <div class="result" id="result" aria-live="polite" hidden>
+          <div class="result-top">
+            <span class="rating" id="rating"></span>
+            <span class="points"><b id="points"></b> pts<span class="points-x" id="points-x"></span></span>
+          </div>
+          <p class="where"><span id="where"></span><span class="distance" id="distance"></span></p>
+        </div>
+
+        <div class="card-actions">
+          <p class="hint" id="hint">Tap the globe to drop your ball.</p>
+          <button class="btn primary" id="btn-go" type="button" disabled>Lock it in</button>
+        </div>
+      </section>
+
+      <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+    </div>
+
+    <dialog class="sheet" id="dlg-help" aria-labelledby="help-title">
+      <button class="close" type="button" data-close aria-label="Close">×</button>
+      <h2 id="help-title">How to play</h2>
+      <ol class="steps">
+        <li><b>Read the course.</b> Every day there are five famous golf courses, the same for every player.</li>
+        <li><b>Spin and zoom the globe,</b> then tap where you think the course is. Tap again to move your ball.</li>
+        <li><b>Lock it in.</b> The flag drops on the real spot. The closer your ball, the more points, up to 100.</li>
+        <li><b>The back tees count more.</b> Holes 1–2 play from the white tees (×1), hole 3 from the blue tees (×2), and holes 4–5 from the tips (×3). A perfect round is 1,000.</li>
+      </ol>
+      <h3>Scoring</h3>
+      <table class="ratings" id="ratings-table">
+        <thead><tr><th scope="col">Result</th><th scope="col">Points</th><th scope="col">Ball within</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="fine">A new set of courses tees off at midnight, your local time.</p>
+      <button class="btn primary" type="button" data-close autofocus>Tee off</button>
+    </dialog>
+
+    <dialog class="sheet" id="dlg-stats" aria-labelledby="stats-title">
+      <button class="close" type="button" data-close aria-label="Close">×</button>
+      <h2 id="stats-title">Your record</h2>
+      <dl class="stat-row" id="stat-row"></dl>
+      <h3>Daily scores</h3>
+      <div class="dist" id="dist"></div>
+      <div class="units">
+        <span id="units-label">Distances in</span>
+        <div class="seg" role="radiogroup" aria-labelledby="units-label">
+          <button type="button" role="radio" data-units="km" id="units-km">km</button>
+          <button type="button" role="radio" data-units="mi" id="units-mi">miles</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="sheet scorecard" id="dlg-card" aria-labelledby="card-title">
+      <button class="close" type="button" data-close aria-label="Close">×</button>
+      <header class="sc-head">
+        <span class="sc-club">GolfTap</span>
+        <h2 id="card-title">Scorecard</h2>
+        <span class="sc-date" id="sc-date"></span>
+      </header>
+      <div class="sc-wrap">
+        <table class="sc" id="sc-table"></table>
+      </div>
+      <p class="sc-key"><span class="mark under">86</span> birdie or better <span class="mark over">40</span> bogey or worse</p>
+      <ol class="sc-courses" id="sc-courses"></ol>
+      <div class="sc-total"><span class="sc-total-label">Total</span><span class="sc-total-num" id="sc-total"></span><span class="sc-total-max">/ 1000</span></div>
+      <div class="sc-actions">
+        <button class="btn primary" type="button" id="btn-share">Copy result</button>
+        <button class="btn" type="button" id="btn-next-mode">Practice round</button>
+      </div>
+      <textarea class="share-fallback" id="share-fallback" rows="3" readonly hidden aria-label="Result to copy"></textarea>
+      <p class="next" id="next-round"></p>
+    </dialog>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
