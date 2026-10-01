@@ -64,6 +64,6 @@ Changing the course list reshuffles the daily schedule from the next puzzle on. 
 
 ## Data
 
-- Satellite imagery: [NASA Visible Earth, Blue Marble Next Generation](https://visibleearth.nasa.gov/collection/1484/blue-marble) (July 2004, with topography and bathymetry; public domain), resized to 4K (`src/assets`) and 8K (`public/textures`, loaded on desktops). Without WebGL the globe falls back to flat vector colours.
+- Satellite imagery: [EOxCloudless 2025](https://cloudless.eox.at) (Sentinel-2 cloudless) by EOX IT Services GmbH, containing modified Copernicus Sentinel data 2025, licensed [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). It's stitched from EOX's WGS84 tiles at zoom 4 into an 8K equirectangular texture (`public/textures`, loaded on desktops) and a 4K copy (`src/assets`). **The licence is non-commercial**: using GolfTap commercially (ads, paid features) needs a commercial licence from EOX or different imagery. Without WebGL the globe falls back to flat vector colours.
 - Map: [Natural Earth](https://www.naturalearthdata.com/) via [world-atlas](https://github.com/topojson/world-atlas) (countries, 50m/110m), [us-atlas](https://github.com/topojson/us-atlas) (US states) and [geo-maps](https://github.com/simonepri/geo-maps) (lakes). All are bundled, so no map API keys or tile servers are needed.
 - Course coordinates were compiled by hand and are accurate to within a few kilometres. Corrections are welcome.
