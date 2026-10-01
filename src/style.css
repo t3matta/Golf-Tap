@@ -818,6 +818,12 @@ button {
   font-weight: 600;
 }
 
+.ratings .num {
+  text-align: right;
+  padding-right: 0;
+  padding-left: 8px;
+}
+
 .ratings .under {
   color: var(--under);
 }
@@ -887,7 +893,7 @@ button {
 
 .dist-row {
   display: grid;
-  grid-template-columns: 64px 1fr;
+  grid-template-columns: 80px 1fr;
   align-items: center;
   gap: 8px;
   font-size: 12px;

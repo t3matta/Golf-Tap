@@ -3,9 +3,12 @@ import type { Course } from "./courses";
 export type LonLat = [number, number];
 
 export const HOLES_PER_ROUND = 5;
-/** Later holes are worth more, MapTap-style: a perfect round is 1000. */
+/** Later holes count more, MapTap-style: their strokes are multiplied. */
 export const MULTIPLIERS = [1, 1, 2, 3, 3] as const;
-export const MAX_TOTAL = MULTIPLIERS.reduce((sum, m) => sum + 100 * m, 0);
+/** A hole runs from this many strokes under par to this many over, times its multiplier. */
+export const STROKES_PER_HOLE = 5;
+/** The best round possible, in strokes to par (−50); the worst is the same over par. */
+export const BEST_ROUND = -MULTIPLIERS.reduce((sum, m) => sum + STROKES_PER_HOLE * m, 0);
 
 // Scoring follows MapTap's curve: points fall off exponentially with distance and hit
 // zero at SCORE_RANGE_KM. Roughly 98 at 100 km, 81 at 1,000 km, 34 at 5,000 km.
@@ -51,26 +54,76 @@ export function withCountryBonus(points: number, sameCountry: boolean): number {
   return Math.round(Math.max(points, Math.min(boosted, COUNTRY_BONUS_CAP)));
 }
 
+/**
+ * Golf scoring: a hole's points (0–100) become strokes to par, lower is better. 100 points
+ * is 5 under, 50 is level par and 0 is 5 over, times the hole's multiplier. Halves round
+ * toward the better score.
+ */
+export function holeToPar(points: number, multiplier: number): number {
+  // m × (50 − points) / 10, in integers so halves round exactly.
+  const n = multiplier * (50 - points) * STROKES_PER_HOLE;
+  return Math.ceil((n - 25) / 50) || 0;
+}
+
+/** Strokes to par for the holes played so far. */
+export function roundToPar(results: HoleResult[]): number {
+  return results.reduce((sum, r, i) => sum + holeToPar(r.points, MULTIPLIERS[i]), 0);
+}
+
+/** Golf notation: "−3", "E", "+2". */
+export function formatToPar(strokes: number): string {
+  if (Math.abs(strokes) < 0.05) return "E";
+  const n = Number.isInteger(strokes) ? String(Math.abs(strokes)) : Math.abs(strokes).toFixed(1);
+  return `${strokes < 0 ? "−" : "+"}${n}`;
+}
+
+/** Spoken form for screen readers: "3 under par", "even par", "2 over par". */
+export function spokenToPar(strokes: number): string {
+  if (strokes === 0) return "even par";
+  return `${Math.abs(strokes)} ${strokes < 0 ? "under" : "over"} par`;
+}
+
 export interface Rating {
   key: "ace" | "eagle" | "birdie" | "par" | "bogey" | "double" | "lost";
   label: string;
   emoji: string;
-  min: number;
 }
 
-// Ordered best to worst. `min` is the lowest points total that earns the rating.
+// Ordered best to worst.
 export const RATINGS: Rating[] = [
-  { key: "ace", label: "Hole-in-one", emoji: "🏆", min: 100 },
-  { key: "eagle", label: "Eagle", emoji: "🦅", min: 95 },
-  { key: "birdie", label: "Birdie", emoji: "🐦", min: 85 },
-  { key: "par", label: "Par", emoji: "⛳", min: 70 },
-  { key: "bogey", label: "Bogey", emoji: "🟡", min: 50 },
-  { key: "double", label: "Double bogey", emoji: "🟠", min: 25 },
-  { key: "lost", label: "Lost ball", emoji: "💦", min: 0 },
+  { key: "ace", label: "Hole-in-one", emoji: "🏆" },
+  { key: "eagle", label: "Eagle", emoji: "🦅" },
+  { key: "birdie", label: "Birdie", emoji: "🐦" },
+  { key: "par", label: "Par", emoji: "⛳" },
+  { key: "bogey", label: "Bogey", emoji: "🟡" },
+  { key: "double", label: "Double bogey", emoji: "🟠" },
+  { key: "lost", label: "Lost ball", emoji: "💦" },
 ];
 
-export function ratingFor(points: number): Rating {
-  return RATINGS.find((r) => points >= r.min) ?? RATINGS[RATINGS.length - 1];
+const RATING_BY_KEY = Object.fromEntries(RATINGS.map((r) => [r.key, r])) as Record<Rating["key"], Rating>;
+
+/**
+ * The name for a hole, from its strokes per multiplier, so the same score on the same tees
+ * always gets the same name: under par is a birdie or better, over par a bogey or worse.
+ * A hole-in-one is the exception, kept for a ball on the pin (100 points).
+ */
+export function ratingFor(points: number, toPar: number, multiplier: number): Rating {
+  const x = toPar / multiplier;
+  const key: Rating["key"] =
+    points >= 100
+      ? "ace"
+      : x <= -4
+        ? "eagle"
+        : x < 0
+          ? "birdie"
+          : x === 0
+            ? "par"
+            : x < 3
+              ? "bogey"
+              : x < 4.5
+                ? "double"
+                : "lost";
+  return RATING_BY_KEY[key];
 }
 
 /** Shown with each reveal, like a playing partner's comment. */
@@ -213,21 +266,22 @@ export interface HoleResult {
   sameCountry?: boolean;
 }
 
-export function roundTotal(results: HoleResult[]): number {
-  return results.reduce((sum, r, i) => sum + r.points * MULTIPLIERS[i], 0);
-}
-
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 /**
- * MapTap-style share text:
+ * MapTap-style share text, in strokes to par:
  *   GolfTap September 30
- *   100🏆 81🐦 62⛳ 40🟡 10💦
- *   Final score: 455
+ *   −5🏆 −4🦅 −4🐦 E⛳ +12🟠
+ *   Final score: −1
  *   https://…
  */
 export function shareText(opts: { date: Date | null; results: HoleResult[]; url?: string }): string {
   const title = opts.date ? `GolfTap ${MONTHS[opts.date.getMonth()]} ${opts.date.getDate()}` : "GolfTap practice round";
-  const holes = opts.results.map((r) => `${r.points}${ratingFor(r.points).emoji}`).join(" ");
-  return [title, holes, `Final score: ${roundTotal(opts.results)}`, opts.url].filter(Boolean).join("\n");
+  const holes = opts.results
+    .map((r, i) => {
+      const toPar = holeToPar(r.points, MULTIPLIERS[i]);
+      return `${formatToPar(toPar)}${ratingFor(r.points, toPar, MULTIPLIERS[i]).emoji}`;
+    })
+    .join(" ");
+  return [title, holes, `Final score: ${formatToPar(roundToPar(opts.results))}`, opts.url].filter(Boolean).join("\n");
 }

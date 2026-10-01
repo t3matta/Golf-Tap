@@ -2,17 +2,20 @@
 
 A daily geography game about golf courses, inspired by [MapTap](https://maptap.gg).
 
-Every day there are five golf courses from around the world, the same for every player. Spin the globe and tap where you think each course is. Your first tap is your guess, as in MapTap. The closer your ball lands to the flag, the more points you get. Players who prefer a two-step "place, then lock it in" flow can turn on **Confirm each guess** in Settings.
+Every day there are five golf courses from around the world, the same for every player. Spin the globe and tap where you think each course is. Your first tap is your guess, as in MapTap. The closer your ball lands to the flag, the lower your score, as in golf. Players who prefer a two-step "place, then lock it in" flow can turn on **Confirm each guess** in Settings.
 
 After each guess the flag drops on the real spot. A label beside it shows the result and a golf one-liner, the course's country lights up, and the card shows a fact about the course. Facts stay hidden until you've guessed, so they can't give the answer away. The next hole tees off by itself after a few seconds; touching the globe pauses that so you can look around.
+
+The game loads straight into the first hole; the ? button opens the rules.
 
 Taps that stop a spinning globe don't count, and on touch screens neither do taps within half a second of a drag or pinch, so spinning the globe doesn't place a ball by accident.
 
 ## How scoring works
 
-- Each hole scores 0–100 by great-circle distance on MapTap's curve, `100 × e^(−3.5 × km / 16,250)`: about 98 at 100 km, 81 at 1,000 km and 34 at 5,000 km, and 0 beyond 16,250 km.
-- Landing in the right country guarantees a boost, also as in MapTap. The score is rescaled from 25 up, capped at 80, and never lowered.
-- Later holes count more, like playing from the back tees:
+- Each hole first earns 0–100 points by great-circle distance on MapTap's curve, `100 × e^(−3.5 × km / 16,250)`: about 98 at 100 km, 81 at 1,000 km and 34 at 5,000 km, and 0 beyond 16,250 km.
+- Landing in the right country guarantees a boost, also as in MapTap. The points are rescaled from 25 up, capped at 80, and never lowered.
+- Points become strokes to par: 100 points is 5 under, 50 (about 3,200 km off) is level par and 0 is 5 over, rounded to whole strokes with halves going your way. Lower is better.
+- Later holes count more, like playing from the back tees, multiplying the hole's strokes:
 
   | Hole | Tees  | Multiplier |
   | ---- | ----- | ---------- |
@@ -20,11 +23,11 @@ Taps that stop a spinning globe don't count, and on touch screens neither do tap
   | 3    | Blue  | ×2         |
   | 4–5  | Tips  | ×3         |
 
-  A perfect round is 1,000.
-- Each hole gets a golf result: hole-in-one, eagle, birdie, par, bogey, double bogey or lost ball. The scorecard circles birdies and better and boxes bogeys and worse, like a real card.
+  So holes 1–2 run from −5 to +5, hole 3 from −10 to +10 and holes 4–5 from −15 to +15, and a round from −50 (perfect) to +50. Even par is shown as E.
+- Each hole gets a golf result that agrees with its score, judged per multiplier so the same score on the same tees always has the same name: under par is a birdie, or an eagle from 4 under (×1); level is par; over par is a bogey, a double bogey from 3 over or a lost ball at 5 over (those are ×1 holes; ×2 and ×3 holes use the same bands, scaled). A hole-in-one is kept for a ball on the pin (100 points, within about 23 km). The right-country boost means a bogey at worst. The scorecard circles birdies and better and boxes bogeys and worse, like a real card.
 - Daily courses are dealt from a seeded shuffle, so every course appears once before any repeats. Each day's five are kept 800 km apart where possible, and ordered from most famous to deepest cut.
 
-Streaks, stats and the in-progress round are stored in the browser (`localStorage`). There's no backend.
+Streaks, stats and the in-progress round are stored in the browser (`localStorage`). There's no backend. Rounds finished before golf scoring are re-scored to par the first time stats load.
 
 ## Development
 

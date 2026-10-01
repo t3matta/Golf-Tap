@@ -54,7 +54,7 @@
 
       <div class="score-chip" id="score-chip">
         <span class="score-label">Score</span>
-        <span class="score-num" id="score-num">000</span>
+        <span class="score-num" id="score-num">E</span>
       </div>
 
       <div class="reveal-tag" id="reveal-tag" aria-hidden="true" hidden>
@@ -104,17 +104,17 @@
       <ol class="steps">
         <li><b>Read the course name.</b> Every day there are five famous golf courses, the same for every player.</li>
         <li><b>Spin and zoom the globe,</b> then tap where you think the course is. Your first tap is your guess, so spin first and tap once. Prefer a confirm step? Turn on <i>Confirm each guess</i> in Settings.</li>
-        <li><b>Watch the flag drop</b> on the real spot and read a fact about the course. The closer your ball, the more points, up to 100. The next hole tees off a few seconds later; touch the globe to stay and look around.</li>
-        <li><b>The back tees count more.</b> Holes 1–2 play from the white tees (×1), hole 3 from the blue tees (×2), and holes 4–5 from the tips (×3). A perfect round is 1,000.</li>
+        <li><b>Watch the flag drop</b> on the real spot and read a fact about the course. The closer your ball, the lower your score: from 5 under par for a ball on the pin to 5 over for one on the far side of the world. The next hole tees off a few seconds later; touch the globe to stay and look around.</li>
+        <li><b>The back tees count more.</b> Holes 1–2 play from the white tees (×1), hole 3 from the blue tees (×2), and holes 4–5 from the tips (×3), multiplying every stroke. A round runs from −50 to +50. Lowest score wins.</li>
       </ol>
       <h3>Scoring</h3>
       <table class="ratings" id="ratings-table">
-        <thead><tr><th scope="col">Result</th><th scope="col">Points</th><th scope="col">Ball within</th></tr></thead>
+        <thead></thead>
         <tbody></tbody>
       </table>
-      <p class="fine">Land in the right country and you get at least 25 points, rising with accuracy up to 80. A new set of courses tees off at midnight, your local time.</p>
+      <p class="fine">Land in the right country and the hole is never worse than a bogey. A new set of courses tees off at midnight, your local time.</p>
       <p class="credit">Satellite imagery: <a href="https://cloudless.eox.at" target="_blank" rel="noopener">EOxCloudless 2025</a> by EOX IT Services GmbH, containing modified Copernicus Sentinel data 2025, licensed <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>.</p>
-      <button class="btn primary" type="button" data-close autofocus>Tee off</button>
+      <button class="btn primary" type="button" data-close autofocus>Back to the course</button>
     </dialog>
 
     <dialog class="sheet" id="dlg-stats" aria-labelledby="stats-title">
@@ -150,9 +150,9 @@
       <div class="sc-wrap">
         <table class="sc" id="sc-table"></table>
       </div>
-      <p class="sc-key"><span class="mark under">86</span> birdie or better <span class="mark over">40</span> bogey or worse</p>
+      <p class="sc-key"><span class="mark under">−3</span> under par <span class="mark over">+2</span> over par</p>
       <ol class="sc-courses" id="sc-courses"></ol>
-      <div class="sc-total"><span class="sc-total-label">Total</span><span class="sc-total-num" id="sc-total"></span><span class="sc-total-max">/ 1000</span></div>
+      <div class="sc-total"><span class="sc-total-label">Total</span><span class="sc-total-num" id="sc-total"></span><span class="sc-total-max" id="sc-total-note">to par</span></div>
       <div class="sc-actions">
         <button class="btn primary" type="button" id="btn-share">Share results</button>
         <button class="btn" type="button" id="btn-next-mode">Practice round</button>

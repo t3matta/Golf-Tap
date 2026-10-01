@@ -1,24 +1,27 @@
 import "./style.css";
 import { COURSES, type Course } from "./courses";
 import {
+  BEST_ROUND,
   HOLES_PER_ROUND,
-  MAX_TOTAL,
   MULTIPLIERS,
-  RATINGS,
+  SCORE_RANGE_KM,
   dailyCourses,
   dayIndexFor,
   dateKey,
   distanceForScore,
   distanceKm,
   formatDistance,
+  formatToPar,
+  holeToPar,
   msUntilNextDay,
   practiceCourses,
   puzzleNumberFor,
   quipFor,
   ratingFor,
-  roundTotal,
+  roundToPar,
   scoreForDistance,
   shareText,
+  spokenToPar,
   withCountryBonus,
   type HoleResult,
   type LonLat,
@@ -65,6 +68,7 @@ const el = {
   goLabel: $("btn-go-label"),
   toast: $("toast"),
   dlgHelp: $<HTMLDialogElement>("dlg-help"),
+  ratingsHead: $("ratings-table").querySelector("thead")!,
   ratingsBody: $("ratings-table").querySelector("tbody")!,
   dlgStats: $<HTMLDialogElement>("dlg-stats"),
   statRow: $("stat-row"),
@@ -76,6 +80,7 @@ const el = {
   scTable: $("sc-table"),
   scCourses: $("sc-courses"),
   scTotal: $("sc-total"),
+  scTotalNote: $("sc-total-note"),
   btnShare: $<HTMLButtonElement>("btn-share"),
   btnNextMode: $<HTMLButtonElement>("btn-next-mode"),
   shareFallback: $<HTMLTextAreaElement>("share-fallback"),
@@ -190,6 +195,15 @@ function markClass(r: Rating): string {
   }
 }
 
+/** A played hole's strokes to par and the name that goes with them. */
+function scoreOf(r: HoleResult, index: number): { toPar: number; rating: Rating } {
+  const m = MULTIPLIERS[index];
+  const toPar = holeToPar(r.points, m);
+  return { toPar, rating: ratingFor(r.points, toPar, m) };
+}
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 const ratingTone = (r: Rating) =>
   r.key === "ace" || r.key === "eagle" || r.key === "birdie" ? "under" : r.key === "par" ? "" : "over";
 
@@ -251,9 +265,10 @@ function renderPips(): void {
     const li = document.createElement("li");
     const r = session.results[i];
     if (r) {
-      li.className = `is-done ${ratingTone(ratingFor(r.points))}`;
-      li.textContent = String(r.points);
-      li.setAttribute("aria-label", `Hole ${i + 1}: ${r.points} points`);
+      const { toPar, rating } = scoreOf(r, i);
+      li.className = `is-done ${ratingTone(rating)}`;
+      li.textContent = formatToPar(toPar);
+      li.setAttribute("aria-label", `Hole ${i + 1}: ${rating.label}, ${spokenToPar(toPar)}`);
     } else {
       li.textContent = String(i + 1);
       if (i === idx && session.phase !== "done") li.className = "is-current";
@@ -268,13 +283,13 @@ function renderCard(): void {
   const { phase } = session;
 
   if (phase === "done") {
-    const total = roundTotal(session.results);
+    const total = roundToPar(session.results);
     el.tee.hidden = true;
     el.teeName.hidden = true;
     el.holeLabel.textContent = "Round complete";
-    el.courseName.textContent = `You shot ${total}`;
+    el.courseName.textContent = `You shot ${formatToPar(total)}`;
     el.reveal.hidden = false;
-    el.where.textContent = `Out of ${MAX_TOTAL.toLocaleString("en-US")}`;
+    el.where.textContent = `${capitalize(spokenToPar(total))} · best possible ${formatToPar(BEST_ROUND)}`;
     el.fact.textContent =
       session.mode === "daily"
         ? "Five new courses tee off at midnight."
@@ -338,19 +353,20 @@ function onLanded(): void {
   const r = session.results[idx];
   const course = session.courses[idx];
   const m = MULTIPLIERS[idx];
-  const rating = ratingFor(r.points);
-  const bonus = r.points - scoreForDistance(r.distanceKm);
-  const countryNote = r.sameCountry ? (bonus > 0 ? ` · right country +${bonus}` : " · right country") : "";
+  const { toPar, rating } = scoreOf(r, idx);
+  // Strokes the right-country bonus took off.
+  const saved = holeToPar(scoreForDistance(r.distanceKm), m) - toPar;
+  const countryNote = r.sameCountry ? (saved > 0 ? ` · right country ${formatToPar(-saved)}` : " · right country") : "";
 
   el.tagRating.textContent = rating.label;
   el.tagRating.className = `tag-rating ${ratingTone(rating)}`;
-  el.tagPoints.innerHTML = `<b>${r.points}</b> pts${m > 1 ? ` × ${m} = ${r.points * m}` : ""}`;
+  el.tagPoints.innerHTML = `<b>${formatToPar(toPar)}</b>${m > 1 ? ` on a ×${m} hole` : ""}`;
   el.tagDist.textContent = `${formatDistance(r.distanceKm, units)} away${countryNote}`;
   el.tagQuip.textContent = `“${quipFor(rating, course.id)}”`;
   tagAnchor = answerOf(course);
   el.tag.hidden = false;
   positionTag();
-  el.resultSr.textContent = `${rating.label}: ${r.points} points${m > 1 ? `, times ${m}` : ""}. ${formatDistance(
+  el.resultSr.textContent = `${rating.label}: ${spokenToPar(toPar)}${m > 1 ? ` on a times ${m} hole` : ""}. ${formatDistance(
     r.distanceKm,
     units,
   )} away. ${course.place}, ${course.country}.`;
@@ -430,11 +446,11 @@ let scoreFrame = 0;
 
 function renderScore(animate: boolean): void {
   const counting = session.phase === "revealed" && !session.landed;
-  const target = roundTotal(counting ? session.results.slice(0, -1) : session.results);
+  const target = roundToPar(counting ? session.results.slice(0, -1) : session.results);
   cancelAnimationFrame(scoreFrame);
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const show = (n: number) => (el.scoreNum.textContent = String(n).padStart(3, "0"));
-  el.scoreChip.setAttribute("aria-label", `Score ${target}`);
+  const show = (n: number) => (el.scoreNum.textContent = formatToPar(n));
+  el.scoreChip.setAttribute("aria-label", `Score: ${spokenToPar(target)}`);
   if (!animate || reduced || target === shownScore) {
     shownScore = target;
     show(target);
@@ -456,23 +472,46 @@ function renderScore(animate: boolean): void {
   scoreFrame = requestAnimationFrame(step);
 }
 
+/** Example misses for the scoring table, as round numbers in each unit. */
+const HELP_EXAMPLES: { km: number; mi: number }[] = [
+  { km: 250, mi: 150 },
+  { km: 1000, mi: 600 },
+  { km: 3200, mi: 2000 },
+  { km: 5000, mi: 3000 },
+  { km: 10_000, mi: 6000 },
+];
+
 function renderHelp(): void {
-  el.ratingsBody.innerHTML = RATINGS.map((r, i) => {
-    const next = RATINGS[i - 1];
-    const pts = next ? `${r.min}–${next.min - 1}` : `${r.min}`;
-    const within = r.min > 0 ? `${formatDistance(distanceForScore(r.min), units)}` : "farther";
-    const tone = ratingTone(r);
-    return `<tr><td class="${tone}">${r.label}</td><td>${pts}</td><td>${within}</td></tr>`;
-  }).join("");
+  const tees = [...new Set(MULTIPLIERS)];
+  const row = (label: string, km: number) => {
+    const points = scoreForDistance(km);
+    const rating = ratingFor(points, holeToPar(points, 1), 1);
+    const cells = tees.map((m) => `<td class="num">${formatToPar(holeToPar(points, m))}</td>`).join("");
+    return `<tr><td class="${ratingTone(rating)}">${rating.label}</td><td>${label}</td>${cells}</tr>`;
+  };
+  const ace = distanceForScore(100);
+  // Past this, a ball scores nothing; in miles, round it up to a tidy figure.
+  const far = units === "mi" ? (Math.ceil((SCORE_RANGE_KM * 0.621371) / 100) * 100) / 0.621371 : SCORE_RANGE_KM;
+  el.ratingsHead.innerHTML = `<tr><th scope="col">Result</th><th scope="col">Ball off by</th>${tees
+    .map((m) => `<th scope="col" class="num">×${m}</th>`)
+    .join("")}</tr>`;
+  el.ratingsBody.innerHTML = [
+    row(`under ${formatDistance(ace, units)}`, 0),
+    ...HELP_EXAMPLES.map((e) => {
+      const km = units === "mi" ? e.mi / 0.621371 : e.km;
+      return row(formatDistance(km, units), km);
+    }),
+    row(`over ${formatDistance(far, units)}`, far),
+  ].join("");
 }
 
 function renderStats(): void {
   const history = store.loadHistory();
   const s = store.computeStats(history, day.puzzleNumber);
-  const tiles: [string, number][] = [
+  const tiles: [string, string | number][] = [
     ["Played", s.played],
-    ["Average", s.average],
-    ["Best", s.best],
+    ["Average", s.played ? formatToPar(s.average) : "–"],
+    ["Best", s.played ? formatToPar(s.best) : "–"],
     ["Streak", s.streak],
     ["Longest streak", s.maxStreak],
   ];
@@ -483,12 +522,13 @@ function renderStats(): void {
   } else {
     const max = Math.max(...s.distribution, 1);
     const today = history[day.puzzleNumber];
-    const todayBin = today === undefined ? -1 : Math.min(9, Math.floor(today / 100));
+    const todayBin = today === undefined ? -1 : store.scoreBin(today);
+    // Best scores (furthest under par) at the top.
     el.dist.innerHTML = s.distribution
       .map((count, bin) => ({ count, bin }))
-      .reverse()
       .map(({ count, bin }) => {
-        const label = bin === 9 ? "900–1000" : `${bin * 100}–${bin * 100 + 99}`;
+        const [lo, hi] = store.binRange(bin);
+        const label = `${formatToPar(lo)} to ${formatToPar(hi)}`;
         const w = count ? Math.max(6, (count / max) * 100) : 0;
         const cls = `dist-row${bin === todayBin ? " is-today" : ""}${count ? "" : " is-empty"}`;
         return `<div class="${cls}"><span>${label}</span><span class="dist-bar" style="--w:${w}">${count || ""}</span></div>`;
@@ -501,7 +541,7 @@ function renderStats(): void {
 
 function renderScorecard(): void {
   const { results, courses } = session;
-  const total = roundTotal(results);
+  const total = roundToPar(results);
   el.scDate.textContent =
     session.mode === "daily" ? `No. ${session.puzzleNumber} · ${formatDate(session.date, true)}` : "Practice round";
 
@@ -513,32 +553,40 @@ function renderScorecard(): void {
       return `<td><span class="tee-cell" title="${teeFor(m).name}"><span class="tee" data-tee="${teeFor(m).key}"></span>×${m}</span></td>`;
     })
     .join("");
-  const pts = holes
+  const scores = holes
     .map((i) => {
       const r = results[i];
-      return `<td>${r ? `<span class="${markClass(ratingFor(r.points))}">${r.points}</span>` : ""}</td>`;
+      if (!r) return "<td></td>";
+      const { toPar, rating } = scoreOf(r, i);
+      return `<td><span class="${markClass(rating)}">${formatToPar(toPar)}</span></td>`;
     })
     .join("");
-  const scores = holes
-    .map((i) => `<td>${results[i] ? `<span class="hand">${results[i].points * MULTIPLIERS[i]}</span>` : ""}</td>`)
+  // Running score to par after each hole, as on a tournament card.
+  let running = 0;
+  const runningCells = holes
+    .map((i) => {
+      if (!results[i]) return "<td></td>";
+      running += scoreOf(results[i], i).toPar;
+      return `<td><span class="hand">${formatToPar(running)}</span></td>`;
+    })
     .join("");
-  const rawTotal = results.reduce((a, r) => a + r.points, 0);
   el.scTable.innerHTML =
     head +
     `<tbody>
       <tr><th scope="row">Tees</th>${tees}<td class="total-col"></td></tr>
-      <tr><th scope="row">Pts</th>${pts}<td class="total-col"><span class="hand">${rawTotal}</span></td></tr>
-      <tr><th scope="row">Score</th>${scores}<td class="total-col"><span class="hand">${total}</span></td></tr>
+      <tr><th scope="row">Score</th>${scores}<td class="total-col"><span class="hand">${formatToPar(total)}</span></td></tr>
+      <tr><th scope="row">To par</th>${runningCells}<td class="total-col"></td></tr>
     </tbody>`;
 
   el.scCourses.innerHTML = results
     .map((r, i) => {
       const c = courses[i];
-      const rating = ratingFor(r.points);
+      const { rating } = scoreOf(r, i);
       return `<li><span class="n">${i + 1}</span><span class="name">${escapeHtml(c.name)}</span><span class="km">${formatDistance(r.distanceKm, units)}</span><span class="loc">${escapeHtml(`${c.place}, ${c.country}`)} · ${rating.label}</span><span class="fact-line">${escapeHtml(c.clue)}</span></li>`;
     })
     .join("");
-  el.scTotal.textContent = String(total);
+  el.scTotal.textContent = formatToPar(total);
+  el.scTotalNote.textContent = total === 0 ? "even par" : "to par";
   el.btnShare.textContent = "Share results";
   el.btnNextMode.textContent = session.mode === "daily" ? "Practice round" : "Play again";
   el.shareFallback.hidden = true;
@@ -595,7 +643,7 @@ function startDaily(): void {
     landed: false,
   };
   renderTopbar();
-  shownScore = roundTotal(results);
+  shownScore = roundToPar(results);
   renderScore(false);
   if (results.length >= HOLES_PER_ROUND) showFinished(false);
   else beginHole();
@@ -645,7 +693,7 @@ function lockIn(): void {
       results: session.results,
     });
     if (session.results.length === HOLES_PER_ROUND) {
-      store.recordFinish(session.puzzleNumber, roundTotal(session.results));
+      store.recordFinish(session.puzzleNumber, roundToPar(session.results));
     }
   }
 
@@ -805,7 +853,6 @@ for (const dlg of [el.dlgHelp, el.dlgStats, el.dlgCard]) {
     }
   });
 }
-el.dlgHelp.addEventListener("close", () => store.markHelpSeen());
 
 // Tick once a second: scorecard countdown, and roll over to the new puzzle at midnight.
 window.setInterval(() => {
@@ -825,7 +872,3 @@ window.setInterval(() => {
 
 startDaily();
 updateInsets();
-if (!store.hasSeenHelp()) {
-  renderHelp();
-  el.dlgHelp.showModal();
-}
