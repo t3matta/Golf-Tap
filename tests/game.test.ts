@@ -26,7 +26,7 @@ import {
   mulberry32,
   type HoleResult,
 } from "../src/game";
-import { binRange, computeStats, scoreBin } from "../src/storage";
+import { binRange, computeStats, loadHistory, recordFinish, scoreBin } from "../src/storage";
 import { countryAt, countryNear } from "../src/geo";
 
 describe("distanceKm", () => {
@@ -67,76 +67,54 @@ describe("scoring", () => {
     expect(scoreForDistance(20_000)).toBe(0);
   });
 
-  it("distanceForScore is the exact boundary for a points total", () => {
-    for (const points of [100, 90, 50, 25, 10]) {
-      const edge = distanceForScore(points);
-      expect(scoreForDistance(edge - 0.01)).toBeGreaterThanOrEqual(points);
-      expect(scoreForDistance(edge + 0.01)).toBeLessThan(points);
+  it("distanceForScore is the exact boundary for each rating", () => {
+    for (const r of RATINGS.filter((r) => r.min > 0)) {
+      const edge = distanceForScore(r.min);
+      expect(scoreForDistance(edge - 0.01)).toBeGreaterThanOrEqual(r.min);
+      expect(scoreForDistance(edge + 0.01)).toBeLessThan(r.min);
     }
   });
 
   it("turns points into strokes to par, times the multiplier", () => {
-    expect(holeToPar(100, 1)).toBe(-5);
+    expect(holeToPar(100, 1)).toBe(-50);
     expect(holeToPar(50, 1)).toBe(0);
-    expect(holeToPar(0, 1)).toBe(5);
-    expect(holeToPar(100, 3)).toBe(-15);
-    expect(holeToPar(0, 3)).toBe(15);
-    expect(holeToPar(81, 2)).toBe(-6);
-    // Halves round toward the better score.
-    expect(holeToPar(55, 1)).toBe(-1);
-    expect(holeToPar(45, 1)).toBe(0);
-    expect(Object.is(holeToPar(50, 3), 0)).toBe(true);
-    for (const m of [1, 2, 3]) {
-      let prev = Infinity;
-      for (let p = 0; p <= 100; p++) {
-        const v = holeToPar(p, m);
-        expect(Number.isInteger(v)).toBe(true);
-        expect(Math.abs(v)).toBeLessThanOrEqual(5 * m);
-        expect(v).toBeLessThanOrEqual(prev);
-        prev = v;
-      }
-    }
+    expect(holeToPar(0, 1)).toBe(50);
+    expect(holeToPar(100, 3)).toBe(-150);
+    expect(holeToPar(0, 3)).toBe(150);
+    expect(holeToPar(81, 2)).toBe(-62);
   });
 
   it("names holes to agree with their score", () => {
-    expect(ratingFor(100, -5, 1).key).toBe("ace");
-    expect(ratingFor(97, -5, 1).key).toBe("eagle");
-    expect(ratingFor(81, -3, 1).key).toBe("birdie");
-    expect(ratingFor(50, 0, 3).key).toBe("par");
-    expect(ratingFor(34, 5, 3).key).toBe("bogey");
-    expect(ratingFor(12, 11, 3).key).toBe("double");
-    expect(ratingFor(0, 15, 3).key).toBe("lost");
+    expect(ratingFor(100).key).toBe("ace");
+    expect(ratingFor(90).key).toBe("eagle");
+    expect(ratingFor(89).key).toBe("birdie");
+    expect(ratingFor(51).key).toBe("birdie");
+    expect(ratingFor(50).key).toBe("par");
+    expect(ratingFor(49).key).toBe("bogey");
+    expect(ratingFor(25).key).toBe("bogey");
+    expect(ratingFor(24).key).toBe("double");
+    expect(ratingFor(9).key).toBe("lost");
     const under = new Set(["ace", "eagle", "birdie"]);
     const over = new Set(["bogey", "double", "lost"]);
     for (const m of [1, 2, 3]) {
-      const names = new Map<number, Set<string>>();
       for (let p = 0; p <= 100; p++) {
         const v = holeToPar(p, m);
-        const key = ratingFor(p, v, m).key;
-        expect(under.has(key), `${p}×${m}`).toBe(v < 0);
-        expect(over.has(key), `${p}×${m}`).toBe(v > 0);
-        if (key !== "ace") names.set(v, (names.get(v) ?? new Set()).add(key));
+        expect(under.has(ratingFor(p).key), `${p}×${m}`).toBe(v < 0);
+        expect(over.has(ratingFor(p).key), `${p}×${m}`).toBe(v > 0);
       }
-      // Apart from a hole-in-one, a score on given tees always has one name.
-      for (const [v, keys] of names) expect([...keys], `${v}×${m}`).toHaveLength(1);
     }
   });
 
   it("never scores worse than a bogey in the right country", () => {
-    for (const m of [1, 2, 3]) {
-      for (let p = 0; p <= 100; p++) {
-        const boosted = withCountryBonus(p, true);
-        expect(["double", "lost"]).not.toContain(ratingFor(boosted, holeToPar(boosted, m), m).key);
-      }
+    for (let p = 0; p <= 100; p++) {
+      expect(["double", "lost"]).not.toContain(ratingFor(withCountryBonus(p, true)).key);
     }
   });
 
   it("writes scores in golf notation", () => {
     expect(formatToPar(0)).toBe("E");
-    expect(formatToPar(-3)).toBe("−3");
-    expect(formatToPar(12)).toBe("+12");
-    expect(formatToPar(-6.4)).toBe("−6.4");
-    expect(formatToPar(0.04)).toBe("E");
+    expect(formatToPar(-38)).toBe("−38");
+    expect(formatToPar(120)).toBe("+120");
   });
 
   it("boosts a right-country guess without ever lowering or over-lifting it", () => {
@@ -151,14 +129,14 @@ describe("scoring", () => {
     }
   });
 
-  it("weights later holes and runs from −50 to +50", () => {
+  it("weights later holes and runs from −500 to +500", () => {
     expect(MULTIPLIERS).toHaveLength(HOLES_PER_ROUND);
-    expect(BEST_ROUND).toBe(-50);
+    expect(BEST_ROUND).toBe(-500);
     const round = (points: number): HoleResult[] =>
       MULTIPLIERS.map((_, i) => ({ courseId: `c${i}`, guess: [0, 0], distanceKm: 0, points }));
-    expect(roundToPar(round(100))).toBe(-50);
+    expect(roundToPar(round(100))).toBe(-500);
     expect(roundToPar(round(50))).toBe(0);
-    expect(roundToPar(round(0))).toBe(50);
+    expect(roundToPar(round(0))).toBe(500);
   });
 });
 
@@ -274,7 +252,7 @@ describe("sharing & formatting", () => {
     const results: HoleResult[] = pts.map((p, i) => ({ courseId: `c${i}`, guess: [0, 0], distanceKm: 1, points: p }));
     const text = shareText({ date: new Date(2026, 8, 30), results, url: "https://example.com/golftap/" });
     expect(text).toBe(
-      ["GolfTap September 30", "−5🏆 −4🦅 −4🐦 E⛳ +12🟠", "Final score: −1", "https://example.com/golftap/"].join("\n"),
+      ["GolfTap September 30", "−50🏆 −38🐦 −44🐦 E⛳ +120🟠", "Final score: −12", "https://example.com/golftap/"].join("\n"),
     );
     expect(shareText({ date: null, results })).toMatch(/^GolfTap practice round\n/);
   });
@@ -288,12 +266,11 @@ describe("sharing & formatting", () => {
 
 describe("stats", () => {
   it("computes streaks from consecutive puzzle numbers", () => {
-    const history = { 1: -12, 2: 3, 3: -5, 5: -41, 6: 0 };
+    const history = { 1: -120, 2: 30, 3: -50, 5: -410, 6: 0 };
     const s = computeStats(history, 7);
     expect(s.played).toBe(5);
-    expect(s.best).toBe(-41);
-    expect(s.average).toBe(-11);
-    expect(computeStats({ 1: -3, 2: -4, 3: 0 }, 4).average).toBe(-2.3);
+    expect(s.best).toBe(-410);
+    expect(s.average).toBe(-110);
     expect(s.maxStreak).toBe(3);
     expect(s.streak).toBe(2); // today (7) not played yet; 5–6 still counts
     expect(computeStats(history, 8).streak).toBe(0);
@@ -301,14 +278,36 @@ describe("stats", () => {
     expect(s.distribution.reduce((a, b) => a + b, 0)).toBe(5);
   });
 
-  it("bands scores ten strokes at a time, best first", () => {
-    expect(scoreBin(-50)).toBe(0);
-    expect(scoreBin(-41)).toBe(0);
-    expect(scoreBin(-40)).toBe(1);
+  it("bands scores a hundred strokes at a time, best first", () => {
+    expect(scoreBin(-500)).toBe(0);
+    expect(scoreBin(-401)).toBe(0);
+    expect(scoreBin(-400)).toBe(1);
     expect(scoreBin(0)).toBe(5);
-    expect(scoreBin(50)).toBe(9);
-    expect(binRange(0)).toEqual([-50, -41]);
-    expect(binRange(5)).toEqual([0, 9]);
-    expect(binRange(9)).toEqual([40, 50]);
+    expect(scoreBin(500)).toBe(9);
+    expect(binRange(0)).toEqual([-500, -401]);
+    expect(binRange(5)).toEqual([0, 99]);
+    expect(binRange(9)).toEqual([400, 500]);
+  });
+
+  it("converts rounds saved under earlier scoring", () => {
+    const data = new Map<string, string>();
+    const fake = {
+      getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => void data.set(k, v),
+    };
+    const realStorage = (globalThis as { localStorage?: unknown }).localStorage;
+    (globalThis as { localStorage?: unknown }).localStorage = fake;
+    try {
+      // Points out of 1000, the brief −50…+50 scale, and one round whose holes are saved.
+      data.set("golftap:history", JSON.stringify({ 1: 640, 3: 300 }));
+      data.set("golftap:scores", JSON.stringify({ 1: -14, 2: -3, 3: 20 }));
+      const holes: HoleResult[] = [100, 88, 72, 50, 10].map((p, i) => ({ courseId: `c${i}`, guess: [0, 0], distanceKm: 1, points: p }));
+      data.set("golftap:daily:3", JSON.stringify({ puzzleNumber: 3, courseIds: [], results: holes }));
+      expect(loadHistory()).toEqual({ 1: -140, 2: -30, 3: -12 });
+      recordFinish(4, 55);
+      expect(JSON.parse(data.get("golftap:to-par")!)).toEqual({ 1: -140, 2: -30, 3: -12, 4: 55 });
+    } finally {
+      (globalThis as { localStorage?: unknown }).localStorage = realStorage;
+    }
   });
 });

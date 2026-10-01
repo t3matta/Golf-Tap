@@ -38,37 +38,45 @@ export const saveDaily = (progress: DailyProgress): void => write(`daily:${progr
 /** Final scores in strokes to par, keyed by puzzle number. */
 export type History = Record<string, number>;
 
+const HISTORY_KEY = "to-par";
+
 export function loadHistory(): History {
-  const scores = read<History | null>("scores", null);
-  if (scores) return scores;
-  // Rounds finished before golf scoring were kept as points out of 1000. Re-score them
-  // hole by hole where the round is still saved, else convert the total.
-  const old = read<History>("history", {});
+  const current = read<History | null>(HISTORY_KEY, null);
+  if (current) return current;
+  // Earlier versions kept points out of 1000 ("history") and, briefly, a −50 to +50 score
+  // ("scores"). Re-score each round from its saved holes where possible; otherwise points
+  // convert exactly (500 − points) and the short-lived scale by ×10.
+  const points = read<History>("history", {});
+  const interim = read<History>("scores", {});
   const migrated: History = {};
-  for (const [n, total] of Object.entries(old)) {
+  for (const n of new Set([...Object.keys(points), ...Object.keys(interim)])) {
     const saved = loadDaily(Number(n));
     migrated[n] =
-      saved && saved.results.length === HOLES_PER_ROUND ? roundToPar(saved.results) : Math.round(50 - total / 10);
+      saved && saved.results.length === HOLES_PER_ROUND
+        ? roundToPar(saved.results)
+        : n in points
+          ? -BEST_ROUND - points[n]
+          : interim[n] * 10;
   }
-  if (Object.keys(migrated).length) write("scores", migrated);
+  if (Object.keys(migrated).length) write(HISTORY_KEY, migrated);
   return migrated;
 }
 
 export function recordFinish(puzzleNumber: number, toPar: number): History {
   const history = loadHistory();
   history[puzzleNumber] = toPar;
-  write("scores", history);
+  write(HISTORY_KEY, history);
   return history;
 }
 
-const BIN_SIZE = 10;
+const BIN_SIZE = 100;
 const BINS = Math.ceil((-2 * BEST_ROUND) / BIN_SIZE);
 
-/** Which 10-stroke band a round falls in, best (−50 to −41) first. */
+/** Which 100-stroke band a round falls in, best (−500 to −401) first. */
 export const scoreBin = (toPar: number): number =>
   Math.max(0, Math.min(BINS - 1, Math.floor((toPar - BEST_ROUND) / BIN_SIZE)));
 
-/** The scores a band covers; the last band also takes the worst score, +50. */
+/** The scores a band covers; the last band also takes the worst score, +500. */
 export function binRange(bin: number): [number, number] {
   const lo = BEST_ROUND + bin * BIN_SIZE;
   return [lo, bin === BINS - 1 ? -BEST_ROUND : lo + BIN_SIZE - 1];
@@ -76,13 +84,13 @@ export function binRange(bin: number): [number, number] {
 
 export interface Stats {
   played: number;
-  /** Mean score to par, to one decimal. */
+  /** Mean score to par. */
   average: number;
   /** Lowest score to par. */
   best: number;
   streak: number;
   maxStreak: number;
-  /** Counts per 10-stroke band, best first: −50 to −41, … +40 to +50. */
+  /** Counts per 100-stroke band, best first: −500 to −401, … +400 to +500. */
   distribution: number[];
 }
 
@@ -108,7 +116,7 @@ export function computeStats(history: History, todayPuzzle: number): Stats {
 
   return {
     played: nums.length,
-    average: totals.length ? Math.round((totals.reduce((a, b) => a + b, 0) / totals.length) * 10) / 10 : 0,
+    average: totals.length ? Math.round(totals.reduce((a, b) => a + b, 0) / totals.length) : 0,
     best: totals.length ? Math.min(...totals) : 0,
     streak,
     maxStreak,

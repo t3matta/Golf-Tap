@@ -893,7 +893,7 @@ button {
 
 .dist-row {
   display: grid;
-  grid-template-columns: 80px 1fr;
+  grid-template-columns: 96px 1fr;
   align-items: center;
   gap: 8px;
   font-size: 12px;
@@ -1177,6 +1177,38 @@ button {
 .sc-key .mark + .mark,
 .sc-key .mark:not(:first-child) {
   margin-left: 8px;
+}
+
+/* Phones: three-digit scores (+108) still fit inside their circles and boxes. */
+@media (max-width: 480px) {
+  .sc thead th:first-child,
+  .sc tbody th {
+    width: 46px;
+  }
+
+  .sc tbody th {
+    padding-left: 5px;
+    font-size: 10px;
+  }
+
+  .sc .total-col {
+    width: 46px;
+  }
+
+  .sc .hand {
+    font-size: 17px;
+  }
+
+  .sc .mark {
+    min-width: 0;
+    height: 26px;
+    padding: 0 2px;
+    font-size: 16px;
+  }
+
+  .sc .mark.double {
+    outline-offset: 1px;
+  }
 }
 
 .sc-courses {

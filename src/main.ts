@@ -197,9 +197,7 @@ function markClass(r: Rating): string {
 
 /** A played hole's strokes to par and the name that goes with them. */
 function scoreOf(r: HoleResult, index: number): { toPar: number; rating: Rating } {
-  const m = MULTIPLIERS[index];
-  const toPar = holeToPar(r.points, m);
-  return { toPar, rating: ratingFor(r.points, toPar, m) };
+  return { toPar: holeToPar(r.points, MULTIPLIERS[index]), rating: ratingFor(r.points) };
 }
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -485,7 +483,7 @@ function renderHelp(): void {
   const tees = [...new Set(MULTIPLIERS)];
   const row = (label: string, km: number) => {
     const points = scoreForDistance(km);
-    const rating = ratingFor(points, holeToPar(points, 1), 1);
+    const rating = ratingFor(points);
     const cells = tees.map((m) => `<td class="num">${formatToPar(holeToPar(points, m))}</td>`).join("");
     return `<tr><td class="${ratingTone(rating)}">${rating.label}</td><td>${label}</td>${cells}</tr>`;
   };
