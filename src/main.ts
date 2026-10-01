@@ -14,6 +14,7 @@ import {
   msUntilNextDay,
   practiceCourses,
   puzzleNumberFor,
+  quipFor,
   ratingFor,
   roundTotal,
   scoreForDistance,
@@ -26,12 +27,21 @@ import {
 } from "./game";
 import * as store from "./storage";
 import { Globe, type Pin } from "./globe";
-import { countryAt, countryNear } from "./geo";
+import { countryAt, countryNear, countryShape } from "./geo";
+import earth4k from "./assets/earth-4k.jpg";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const el = {
   canvas: $<HTMLCanvasElement>("globe"),
+  satCanvas: $<HTMLCanvasElement>("globe-sat"),
+  scoreChip: $("score-chip"),
+  scoreNum: $("score-num"),
+  tag: $("reveal-tag"),
+  tagRating: $("tag-rating"),
+  tagPoints: $("tag-points"),
+  tagDist: $("tag-dist"),
+  tagQuip: $("tag-quip"),
   topbar: $("topbar"),
   roundTag: $("round-tag"),
   btnMode: $<HTMLButtonElement>("btn-mode"),
@@ -46,15 +56,13 @@ const el = {
   teeName: $("tee-name"),
   pips: $("pips"),
   courseName: $("course-name"),
-  clue: $("clue"),
-  result: $("result"),
-  rating: $("rating"),
-  points: $("points"),
-  pointsX: $("points-x"),
+  reveal: $("reveal"),
   where: $("where"),
-  distance: $("distance"),
+  fact: $("fact"),
+  resultSr: $("result-sr"),
   hint: $("hint"),
   go: $<HTMLButtonElement>("btn-go"),
+  goLabel: $("btn-go-label"),
   toast: $("toast"),
   dlgHelp: $<HTMLDialogElement>("dlg-help"),
   ratingsBody: $("ratings-table").querySelector("tbody")!,
@@ -87,6 +95,8 @@ interface Session {
   results: HoleResult[];
   phase: Phase;
   pending: LonLat | null;
+  /** In the "revealed" phase: the flag has landed and the result is showing. */
+  landed: boolean;
 }
 
 const byId = new Map(COURSES.map((c) => [c.id, c]));
@@ -107,7 +117,21 @@ function makeDay(date: Date) {
   };
 }
 
-const globe = new Globe(el.canvas);
+// A quick 4K texture first; desktops then swap in 8K for sharper zooming. The single-file
+// build only carries the 4K one.
+const imagery = [earth4k];
+if (import.meta.env.MODE !== "single" && window.matchMedia("(pointer: fine)").matches) {
+  imagery.push(`${import.meta.env.BASE_URL}textures/earth-8k.jpg`);
+}
+const globe = new Globe(el.canvas, { canvas: el.satCanvas, sources: imagery });
+globe.onRender = positionTag;
+globe.onInteract = () => {
+  // Exploring the revealed spot pauses the countdown to the next hole.
+  if (session.phase === "revealed" && advanceTimer) {
+    cancelAdvance();
+    renderCard();
+  }
+};
 globe.onTap = (p) => {
   if (session.phase !== "aim" && session.phase !== "placed") return;
   session.pending = p;
@@ -236,15 +260,14 @@ function renderCard(): void {
     el.teeName.hidden = true;
     el.holeLabel.textContent = "Round complete";
     el.courseName.textContent = `You shot ${total}`;
-    el.clue.textContent =
+    el.reveal.hidden = false;
+    el.where.textContent = `Out of ${MAX_TOTAL.toLocaleString("en-US")}`;
+    el.fact.textContent =
       session.mode === "daily"
-        ? `Out of ${MAX_TOTAL.toLocaleString("en-US")}. Five new courses tee off at midnight.`
-        : `Out of ${MAX_TOTAL.toLocaleString("en-US")}. Practice rounds don't count toward your record.`;
-    el.result.hidden = true;
+        ? "Five new courses tee off at midnight."
+        : "Practice rounds don't count toward your record.";
     el.hint.textContent = "";
-    el.go.hidden = false;
-    el.go.disabled = false;
-    el.go.textContent = "Scorecard";
+    showButton("Scorecard");
     return;
   }
 
@@ -258,35 +281,166 @@ function renderCard(): void {
   el.holeLabel.textContent = `Hole ${idx + 1}`;
   el.teeName.innerHTML = `<span class="tee-long">${tee.name}</span>${m > 1 ? ` ×${m}` : ""}`;
   el.courseName.textContent = course.name;
-  el.clue.textContent = course.clue;
 
-  if (phase === "revealed") {
-    const r = session.results[idx];
-    const rating = ratingFor(r.points);
-    el.result.hidden = false;
-    el.rating.textContent = rating.label;
-    el.rating.className = `rating ${ratingTone(rating)}`;
-    el.points.textContent = String(r.points);
-    el.pointsX.textContent = m > 1 ? `× ${m} = ${r.points * m}` : "";
+  if (phase === "revealed" && session.landed) {
+    // The course fact is only shown once the guess is in.
+    el.reveal.hidden = false;
     el.where.textContent = `${course.place}, ${course.country}`;
-    const bonus = r.points - scoreForDistance(r.distanceKm);
-    const countryNote = r.sameCountry ? (bonus > 0 ? ` · right country, +${bonus}` : " · right country") : "";
-    el.distance.textContent = `${formatDistance(r.distanceKm, units)} from your ball${countryNote}`;
-    el.hint.textContent = "";
-    el.go.hidden = false;
-    el.go.disabled = false;
-    el.go.textContent = idx + 1 < HOLES_PER_ROUND ? "Next hole" : "Scorecard";
+    el.fact.textContent = course.clue;
+    el.hint.textContent = advanceTimer ? "" : "Take your time.";
+    showButton(idx + 1 < HOLES_PER_ROUND ? "Next hole" : "Scorecard");
+  } else if (phase === "revealed") {
+    el.reveal.hidden = true;
+    el.hint.textContent = "Finding the flag…";
+    el.go.hidden = true;
   } else if (confirmGuesses) {
-    el.result.hidden = true;
+    el.reveal.hidden = true;
     el.hint.textContent = phase === "placed" ? "Tap again to move your ball." : "Tap the globe to drop your ball.";
-    el.go.hidden = false;
-    el.go.disabled = phase !== "placed";
-    el.go.textContent = "Lock it in";
+    showButton("Lock it in", phase !== "placed");
   } else {
-    el.result.hidden = true;
+    el.reveal.hidden = true;
     el.hint.textContent = "Tap where you think the course is. Your first tap is your guess.";
     el.go.hidden = true;
   }
+}
+
+function showButton(label: string, disabled = false): void {
+  el.go.hidden = false;
+  el.go.disabled = disabled;
+  el.goLabel.textContent = label;
+}
+
+// ── Reveal ────────────────────────────────────────────────────
+
+/** Seconds of reveal before the next hole tees off by itself. */
+const ADVANCE_MS = 6500;
+let advanceTimer = 0;
+let tagAnchor: LonLat | null = null;
+
+/** Runs once the flag lands: label, country highlight, score and the countdown. */
+function onLanded(): void {
+  if (session.phase !== "revealed") return;
+  session.landed = true;
+  const idx = session.results.length - 1;
+  const r = session.results[idx];
+  const course = session.courses[idx];
+  const m = MULTIPLIERS[idx];
+  const rating = ratingFor(r.points);
+  const bonus = r.points - scoreForDistance(r.distanceKm);
+  const countryNote = r.sameCountry ? (bonus > 0 ? ` · right country +${bonus}` : " · right country") : "";
+
+  el.tagRating.textContent = rating.label;
+  el.tagRating.className = `tag-rating ${ratingTone(rating)}`;
+  el.tagPoints.innerHTML = `<b>${r.points}</b> pts${m > 1 ? ` × ${m} = ${r.points * m}` : ""}`;
+  el.tagDist.textContent = `${formatDistance(r.distanceKm, units)} away${countryNote}`;
+  el.tagQuip.textContent = `“${quipFor(rating, course.id)}”`;
+  tagAnchor = answerOf(course);
+  el.tag.hidden = false;
+  positionTag();
+  el.resultSr.textContent = `${rating.label}: ${r.points} points${m > 1 ? `, times ${m}` : ""}. ${formatDistance(
+    r.distanceKm,
+    units,
+  )} away. ${course.place}, ${course.country}.`;
+
+  const target = countryOfCourse(course);
+  globe.highlight = target ? countryShape(target) : null;
+  globe.requestDraw();
+  renderScore(true);
+  startAdvance();
+  renderCard();
+}
+
+function hideReveal(): void {
+  cancelAdvance();
+  el.tag.hidden = true;
+  tagAnchor = null;
+  globe.highlight = null;
+}
+
+/** Keeps the label beside the flag as the globe moves, clear of the card and top bar. */
+function positionTag(): void {
+  if (el.tag.hidden || !tagAnchor) return;
+  const p = globe.project(tagAnchor);
+  if (!p) {
+    el.tag.style.visibility = "hidden";
+    return;
+  }
+  el.tag.style.visibility = "visible";
+  const w = el.tag.offsetWidth;
+  const h = el.tag.offsetHeight;
+  const vw = window.innerWidth;
+  const card = el.card.getBoundingClientRect();
+  const top = el.scoreChip.getBoundingClientRect().bottom + 8;
+  let x = p[0] + 18;
+  let y = p[1] - h - 44;
+  if (x + w > vw - 12) x = p[0] - w - 18;
+  if (y < top) y = p[1] + 14;
+  x = Math.min(Math.max(12, x), vw - w - 12);
+  if (x < card.right && x + w > card.left && y + h > card.top - 8) y = card.top - h - 8;
+  y = Math.max(top, y);
+  el.tag.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+}
+
+function startAdvance(): void {
+  cancelAdvance();
+  el.go.style.setProperty("--advance-ms", `${ADVANCE_MS}ms`);
+  void el.go.offsetWidth; // restart the fill animation
+  el.go.classList.add("is-counting");
+  advanceTimer = window.setTimeout(() => {
+    advanceTimer = 0;
+    // Don't move on underneath an open dialog; the player continues with the button.
+    if ([el.dlgHelp, el.dlgStats, el.dlgCard].some((d) => d.open)) {
+      cancelAdvance();
+      renderCard();
+      return;
+    }
+    advance();
+  }, ADVANCE_MS);
+}
+
+function cancelAdvance(): void {
+  clearTimeout(advanceTimer);
+  advanceTimer = 0;
+  el.go.classList.remove("is-counting");
+}
+
+function advance(): void {
+  if (session.phase !== "revealed" || !session.landed) return;
+  if (session.results.length >= HOLES_PER_ROUND) showFinished(true);
+  else beginHole();
+}
+
+// ── Score counter ─────────────────────────────────────────────
+
+let shownScore = 0;
+let scoreFrame = 0;
+
+function renderScore(animate: boolean): void {
+  const counting = session.phase === "revealed" && !session.landed;
+  const target = roundTotal(counting ? session.results.slice(0, -1) : session.results);
+  cancelAnimationFrame(scoreFrame);
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const show = (n: number) => (el.scoreNum.textContent = String(n).padStart(3, "0"));
+  el.scoreChip.setAttribute("aria-label", `Score ${target}`);
+  if (!animate || reduced || target === shownScore) {
+    shownScore = target;
+    show(target);
+    return;
+  }
+  const from = shownScore;
+  const start = performance.now();
+  const step = (now: number) => {
+    const t = Math.min(1, (now - start) / 900);
+    show(Math.round(from + (target - from) * (1 - (1 - t) ** 3)));
+    if (t < 1) scoreFrame = requestAnimationFrame(step);
+    else {
+      shownScore = target;
+      el.scoreChip.classList.remove("is-bumping");
+      void el.scoreChip.offsetWidth;
+      el.scoreChip.classList.add("is-bumping");
+    }
+  };
+  scoreFrame = requestAnimationFrame(step);
 }
 
 function renderHelp(): void {
@@ -368,11 +522,11 @@ function renderScorecard(): void {
     .map((r, i) => {
       const c = courses[i];
       const rating = ratingFor(r.points);
-      return `<li><span class="n">${i + 1}</span><span class="name">${escapeHtml(c.name)}</span><span class="km">${formatDistance(r.distanceKm, units)}</span><span class="loc">${escapeHtml(`${c.place}, ${c.country}`)} · ${rating.label}</span></li>`;
+      return `<li><span class="n">${i + 1}</span><span class="name">${escapeHtml(c.name)}</span><span class="km">${formatDistance(r.distanceKm, units)}</span><span class="loc">${escapeHtml(`${c.place}, ${c.country}`)} · ${rating.label}</span><span class="fact-line">${escapeHtml(c.clue)}</span></li>`;
     })
     .join("");
   el.scTotal.textContent = String(total);
-  el.btnShare.textContent = "Copy result";
+  el.btnShare.textContent = "Share results";
   el.btnNextMode.textContent = session.mode === "daily" ? "Practice round" : "Play again";
   el.shareFallback.hidden = true;
   renderCountdown();
@@ -394,8 +548,11 @@ function renderCountdown(): void {
 // ── Flow ──────────────────────────────────────────────────────
 
 function beginHole(): void {
+  hideReveal();
   session.phase = "aim";
+  session.landed = false;
   session.pending = null;
+  el.resultSr.textContent = "";
   globe.setPending(null);
   globe.pins = [];
   globe.tapEnabled = true;
@@ -422,8 +579,11 @@ function startDaily(): void {
     results,
     phase: "aim",
     pending: null,
+    landed: false,
   };
   renderTopbar();
+  shownScore = roundTotal(results);
+  renderScore(false);
   if (results.length >= HOLES_PER_ROUND) showFinished(false);
   else beginHole();
 }
@@ -437,8 +597,11 @@ function startPractice(): void {
     results: [],
     phase: "aim",
     pending: null,
+    landed: false,
   };
   renderTopbar();
+  shownScore = 0;
+  renderScore(false);
   beginHole();
 }
 
@@ -459,6 +622,7 @@ function lockIn(): void {
     sameCountry,
   });
   session.phase = "revealed";
+  session.landed = false;
   session.pending = null;
 
   if (session.mode === "daily" && session.puzzleNumber !== null) {
@@ -476,17 +640,20 @@ function lockIn(): void {
   globe.setPending(null);
   globe.tapEnabled = false;
   globe.pins = [pin];
-  globe.frame2(guess, answer, () => globe.animateArc(pin, 900));
+  globe.frame2(guess, answer, () => globe.animateArc(pin, 900, 0, onLanded));
   renderCard();
 }
 
 function showFinished(openCard: boolean): void {
+  hideReveal();
   session.phase = "done";
+  session.landed = false;
   session.pending = null;
   globe.setPending(null);
   globe.tapEnabled = false;
   globe.pins = pinsFor(session.results, session.courses);
   globe.overview();
+  renderScore(false);
   renderCard();
   if (openCard) openScorecard();
 }
@@ -497,8 +664,7 @@ function onPrimary(): void {
       lockIn();
       break;
     case "revealed":
-      if (session.results.length >= HOLES_PER_ROUND) showFinished(true);
-      else beginHole();
+      advance();
       break;
     case "done":
       openScorecard();
@@ -528,14 +694,13 @@ async function shareResult(): Promise<void> {
   }
   try {
     await navigator.clipboard.writeText(text);
-    el.btnShare.textContent = "Copied";
-    toast("Result copied. Paste it anywhere.");
+    toast("Results copied. Paste them anywhere to share.");
   } catch {
     el.shareFallback.value = text;
     el.shareFallback.hidden = false;
     el.shareFallback.focus();
     el.shareFallback.select();
-    toast("Copy the text below to share your round.");
+    toast("Copy the text below to share your results.");
   }
 }
 
@@ -566,6 +731,12 @@ document.fonts?.ready.then(() => globe.requestDraw());
 // ── Events ────────────────────────────────────────────────────
 
 el.go.addEventListener("click", onPrimary);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && advanceTimer) {
+    cancelAdvance();
+    renderCard();
+  }
+});
 el.zoomIn.addEventListener("click", () => globe.zoomBy(1.6));
 el.zoomOut.addEventListener("click", () => globe.zoomBy(1 / 1.6));
 el.zoomReset.addEventListener("click", () => globe.resetView());

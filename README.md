@@ -4,6 +4,8 @@ A daily geography game about golf courses, inspired by [MapTap](https://maptap.g
 
 Every day there are five golf courses from around the world, the same for every player. Spin the globe and tap where you think each course is. Your first tap is your guess, as in MapTap. The closer your ball lands to the flag, the more points you get. Players who prefer a two-step "place, then lock it in" flow can turn on **Confirm each guess** in Settings.
 
+After each guess the flag drops on the real spot. A label beside it shows the result and a golf one-liner, the course's country lights up, and the card shows a fact about the course. Facts stay hidden until you've guessed, so they can't give the answer away. The next hole tees off by itself after a few seconds; touching the globe pauses that so you can look around.
+
 Taps that stop a spinning globe don't count, and on touch screens neither do taps within half a second of a drag or pinch, so spinning the globe doesn't place a ball by accident.
 
 ## How scoring works
@@ -49,6 +51,8 @@ Set `VITE_SHARE_URL` at build time to control the link in the share text. By def
 | `src/courses.ts` | The course list: name, location, coordinates, clue, difficulty tier |
 | `src/game.ts` | Distance, scoring, ratings, daily puzzle selection, share text |
 | `src/globe.ts` | Canvas globe (d3-geo orthographic): drag/pinch/scroll, tap to guess, flags and flight arcs |
+| `src/satellite.ts` | WebGL layer that paints satellite imagery onto the globe under the 2D canvas |
+| `src/geo.ts` | Which country a point is in (for the right-country bonus and highlight) |
 | `src/storage.ts` | Saved progress, history and stats |
 | `src/main.ts` | Game flow and UI |
 
@@ -60,5 +64,6 @@ Changing the course list reshuffles the daily schedule from the next puzzle on. 
 
 ## Data
 
+- Satellite imagery: [NASA Visible Earth, Blue Marble Next Generation](https://visibleearth.nasa.gov/collection/1484/blue-marble) (July 2004, with topography and bathymetry; public domain), resized to 4K (`src/assets`) and 8K (`public/textures`, loaded on desktops). Without WebGL the globe falls back to flat vector colours.
 - Map: [Natural Earth](https://www.naturalearthdata.com/) via [world-atlas](https://github.com/topojson/world-atlas) (countries, 50m/110m), [us-atlas](https://github.com/topojson/us-atlas) (US states) and [geo-maps](https://github.com/simonepri/geo-maps) (lakes). All are bundled, so no map API keys or tile servers are needed.
 - Course coordinates were compiled by hand and are accurate to within a few kilometres. Corrections are welcome.

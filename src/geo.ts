@@ -59,3 +59,8 @@ export function countryNear(p: LonLat): string | null {
   }
   return null;
 }
+
+/** The country's outline, for highlighting on the globe. */
+export function countryShape(id: string): Feature<Geometry, { name: string }> | null {
+  return COUNTRIES.find((c) => c.id === id)?.shape ?? null;
+}

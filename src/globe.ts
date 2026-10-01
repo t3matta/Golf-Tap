@@ -6,6 +6,7 @@ import {
   geoOrthographic,
   geoPath,
   geoArea,
+  type GeoPath,
   type GeoPermissibleObjects,
   type GeoProjection,
 } from "d3-geo";
@@ -17,6 +18,7 @@ import world110Json from "world-atlas/countries-110m.json";
 import usJson from "us-atlas/states-10m.json";
 import lakesJson from "@geo-maps/earth-lakes-10km/map.geo.json";
 import type { LonLat } from "./game";
+import { SatelliteLayer } from "./satellite";
 
 type WorldTopo = Topology<{ countries: GeometryCollection; land: GeometryCollection }>;
 type UsTopo = Topology<{ states: GeometryCollection; nation: GeometryCollection }>;
@@ -118,6 +120,11 @@ interface Colors {
   pole: string;
   arc: string;
   cup: string;
+  satBorder: string;
+  satState: string;
+  satRim: string;
+  highlightFill: string;
+  highlightStroke: string;
 }
 
 const COLOR_VARS: Record<keyof Colors, string> = {
@@ -138,6 +145,11 @@ const COLOR_VARS: Record<keyof Colors, string> = {
   pole: "--pole",
   arc: "--arc",
   cup: "--cup",
+  satBorder: "--sat-border",
+  satState: "--sat-state",
+  satRim: "--sat-rim",
+  highlightFill: "--highlight-fill",
+  highlightStroke: "--highlight-stroke",
 };
 
 const MIN_ZOOM = 0.85;
@@ -162,6 +174,7 @@ interface ArcAnim {
   start: number;
   duration: number;
   delay: number;
+  done?: () => void;
 }
 
 /** Same colour at zero alpha, so gradients fade without going grey. */
@@ -178,10 +191,17 @@ export class Globe {
   pending: LonLat | null = null;
   tapEnabled = true;
   onTap?: (p: LonLat) => void;
+  /** Any touch, click or scroll on the globe. */
+  onInteract?: () => void;
+  /** Called after every frame, e.g. to keep labels pinned to points on the globe. */
+  onRender?: () => void;
+  /** A shape (usually a country) to tint on the globe. */
+  highlight: GeoPermissibleObjects | null = null;
 
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly projection: GeoProjection;
+  private sat: SatelliteLayer | null = null;
   private width = 0;
   private height = 0;
   private dpr = 1;
@@ -215,7 +235,11 @@ export class Globe {
     mid: { x: number; y: number };
   } | null = null;
 
-  constructor(canvas: HTMLCanvasElement) {
+  /**
+   * `imagery` paints satellite textures on a WebGL canvas under this one. Without WebGL
+   * (or until the first texture loads) the globe falls back to flat vector colours.
+   */
+  constructor(canvas: HTMLCanvasElement, imagery?: { canvas: HTMLCanvasElement; sources: string[] }) {
     this.canvas = canvas;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas 2D is not available in this browser.");
@@ -223,6 +247,14 @@ export class Globe {
     this.projection = geoOrthographic().clipAngle(90).rotate([20, -25]).precision(0);
     this.refreshColors();
     this.bindEvents();
+    if (imagery) {
+      const sat = new SatelliteLayer(imagery.canvas);
+      if (sat.init()) {
+        this.sat = sat;
+        sat.onReady = () => this.requestDraw();
+        void sat.loadSources(imagery.sources);
+      }
+    }
     this.resize();
     new ResizeObserver(() => this.resize()).observe(canvas);
   }
@@ -306,15 +338,27 @@ export class Globe {
   }
 
   /** Draw the guess→answer arc over `duration` ms. */
-  animateArc(pin: Pin, duration = 900, delay = 0): void {
+  animateArc(pin: Pin, duration = 900, delay = 0, done?: () => void): void {
     if (reducedMotion()) {
       pin.progress = 1;
       this.requestDraw();
+      done?.();
       return;
     }
     pin.progress = 0;
-    this.arcs.push({ pin, start: performance.now(), duration, delay });
+    this.arcs.push({ pin, start: performance.now(), duration, delay, done });
     this.requestDraw();
+  }
+
+  /** Screen position of a point in CSS px, or null when it's on the far side. */
+  project(p: LonLat): [number, number] | null {
+    if (!this.visible(p)) return null;
+    const q = this.projection(p);
+    return q ? [q[0], q[1]] : null;
+  }
+
+  get hasImagery(): boolean {
+    return !!this.sat?.ready;
   }
 
   setPending(p: LonLat | null): void {
@@ -384,6 +428,8 @@ export class Globe {
     this.dpr = Math.min(window.devicePixelRatio || 1, 2.5);
     this.canvas.width = Math.round(rect.width * this.dpr);
     this.canvas.height = Math.round(rect.height * this.dpr);
+    // The imagery pass is per-pixel, so cap its resolution a little lower.
+    this.sat?.resize(rect.width, rect.height, Math.min(this.dpr, 2));
     this.laidOut = true;
     this.applyLayout();
     this.requestDraw();
@@ -418,6 +464,7 @@ export class Globe {
       (e) => {
         e.preventDefault();
         this.stopMotion();
+        this.onInteract?.();
         const unit = e.deltaMode === 1 ? 0.05 : e.deltaMode === 2 ? 1 : 0.0022;
         const { x, y } = this.local(e);
         this.zoomAt(Math.exp(-e.deltaY * unit), x, y);
@@ -445,6 +492,7 @@ export class Globe {
 
   private onPointerDown(e: PointerEvent): void {
     if (e.pointerType === "mouse" && e.button !== 0) return;
+    this.onInteract?.();
     this.canvas.setPointerCapture(e.pointerId);
     // A tap that stops a spinning globe, or lands right after a touch drag, is a
     // mis-tap rather than a guess.
@@ -616,11 +664,14 @@ export class Globe {
       else busy = true;
     }
 
+    const finished: ArcAnim[] = [];
     this.arcs = this.arcs.filter((a) => {
       const t = clamp((now - a.start - a.delay) / a.duration, 0, 1);
       a.pin.progress = easeInOut(t);
+      if (t >= 1) finished.push(a);
       return t < 1;
     });
+    for (const a of finished) a.done?.();
     if (this.arcs.length) busy = true;
 
     if (this.pending && now - this.pendingSince < 700) busy = true;
@@ -653,65 +704,60 @@ export class Globe {
     glow.addColorStop(0, c.glow);
     glow.addColorStop(1, transparent(c.glow));
     ctx.fillStyle = glow;
+    // A ring only: a radial gradient also paints its first colour inside the inner
+    // circle, which would tint the satellite imagery underneath.
     ctx.beginPath();
     ctx.arc(cx, cy, r + halo, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.beginPath();
-    path(SPHERE);
-    const ocean = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.05, cx, cy, r);
-    ocean.addColorStop(0, c.ocean1);
-    ocean.addColorStop(1, c.ocean2);
-    ctx.fillStyle = ocean;
-    ctx.fill();
-
-    ctx.beginPath();
-    path(GRATICULE);
-    ctx.strokeStyle = c.graticule;
-    ctx.lineWidth = 0.6;
-    ctx.stroke();
-
-    drawPieces(layer.land);
-    ctx.fillStyle = c.land;
-    ctx.fill();
-
-    drawPieces(LAKES);
-    ctx.fillStyle = c.lake;
+    ctx.arc(cx, cy, r * 0.995, 0, Math.PI * 2, true);
     ctx.fill();
 
     ctx.lineJoin = "round";
-    drawPieces(layer.borders);
-    ctx.strokeStyle = c.border;
-    ctx.lineWidth = this.zoom > 4 ? 1.2 : 0.8;
-    ctx.stroke();
-
-    if (this.zoom > 1.8) {
-      drawPieces(STATES);
-      ctx.strokeStyle = c.state;
-      ctx.lineWidth = 0.6;
-      ctx.setLineDash([3, 3]);
+    if (this.sat?.ready) {
+      const [lambda, phi] = projection.rotate();
+      this.sat.render({ cx, cy, radius: r, lambda, phi });
+      // The imagery already shows land and water. Borders fade in once zoomed in,
+      // to help pin down a spot.
+      if (this.zoom > 2.2) {
+        drawPieces(layer.borders);
+        ctx.strokeStyle = c.satBorder;
+        ctx.lineWidth = this.zoom > 6 ? 1.2 : 0.8;
+        ctx.stroke();
+      }
+      if (this.zoom > 3.5) {
+        drawPieces(STATES);
+        ctx.strokeStyle = c.satState;
+        ctx.lineWidth = 0.7;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.beginPath();
+      path(SPHERE);
+      ctx.strokeStyle = c.satRim;
+      ctx.lineWidth = 1;
       ctx.stroke();
-      ctx.setLineDash([]);
+    } else {
+      this.drawVector(path, drawPieces, layer, cx, cy, r);
     }
 
-    // Terminator-style shading for depth
-    const shade = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.2, cx, cy, r * 1.02);
-    shade.addColorStop(0, "rgba(0,0,0,0)");
-    shade.addColorStop(1, c.shade);
-    ctx.beginPath();
-    path(SPHERE);
-    ctx.fillStyle = shade;
-    ctx.fill();
-    ctx.strokeStyle = c.rim;
-    ctx.lineWidth = 1;
-    ctx.stroke();
+    if (this.highlight) {
+      ctx.beginPath();
+      path(this.highlight);
+      ctx.fillStyle = c.highlightFill;
+      ctx.fill();
+      ctx.strokeStyle = c.highlightStroke;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
 
-    // Arcs under markers
+    // Arcs under markers, sampled along the great circle.
     for (const pin of this.pins) {
       if (!pin.guess || !pin.answer || pin.progress <= 0) continue;
-      const end = geoInterpolate(pin.guess, pin.answer)(pin.progress);
+      const interp = geoInterpolate(pin.guess, pin.answer);
+      const steps = Math.max(2, Math.ceil(72 * pin.progress));
+      const coords = Array.from({ length: steps + 1 }, (_, i) => interp((i / steps) * pin.progress));
       ctx.beginPath();
-      path({ type: "LineString", coordinates: [pin.guess, end] });
+      path({ type: "LineString", coordinates: coords });
       ctx.strokeStyle = c.arc;
       ctx.lineWidth = 2;
       ctx.setLineDash([5, 5]);
@@ -756,6 +802,7 @@ export class Globe {
       ctx.lineTo(cx, cy + 12);
       ctx.stroke();
     }
+    this.onRender?.();
   }
 
   /** Returns a test for whether a piece's cap can reach the visible part of the globe. */
@@ -775,6 +822,65 @@ export class Globe {
       visible: (p) => p.radius >= Math.PI || geoDistance(p.center, center) - p.radius < view + 0.02,
       wide: view > 1.1,
     };
+  }
+
+  /** Flat-colour globe, used without WebGL or before the imagery loads. */
+  private drawVector(
+    path: GeoPath,
+    drawPieces: (pieces: Piece[]) => void,
+    layer: Layer,
+    cx: number,
+    cy: number,
+    r: number,
+  ): void {
+    const { ctx, colors: c } = this;
+    ctx.beginPath();
+    path(SPHERE);
+    const ocean = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.05, cx, cy, r);
+    ocean.addColorStop(0, c.ocean1);
+    ocean.addColorStop(1, c.ocean2);
+    ctx.fillStyle = ocean;
+    ctx.fill();
+
+    ctx.beginPath();
+    path(GRATICULE);
+    ctx.strokeStyle = c.graticule;
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+
+    drawPieces(layer.land);
+    ctx.fillStyle = c.land;
+    ctx.fill();
+
+    drawPieces(LAKES);
+    ctx.fillStyle = c.lake;
+    ctx.fill();
+
+    drawPieces(layer.borders);
+    ctx.strokeStyle = c.border;
+    ctx.lineWidth = this.zoom > 4 ? 1.2 : 0.8;
+    ctx.stroke();
+
+    if (this.zoom > 1.8) {
+      drawPieces(STATES);
+      ctx.strokeStyle = c.state;
+      ctx.lineWidth = 0.6;
+      ctx.setLineDash([3, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Terminator-style shading for depth
+    const shade = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.2, cx, cy, r * 1.02);
+    shade.addColorStop(0, "rgba(0,0,0,0)");
+    shade.addColorStop(1, c.shade);
+    ctx.beginPath();
+    path(SPHERE);
+    ctx.fillStyle = shade;
+    ctx.fill();
+    ctx.strokeStyle = c.rim;
+    ctx.lineWidth = 1;
+    ctx.stroke();
   }
 
   private drawBall(p: LonLat): void {

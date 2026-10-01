@@ -19,6 +19,8 @@ import {
   scoreForDistance,
   shareText,
   withCountryBonus,
+  QUIPS,
+  quipFor,
   mulberry32,
   type HoleResult,
 } from "../src/game";
@@ -97,6 +99,17 @@ describe("scoring", () => {
     expect(MAX_TOTAL).toBe(1000);
     const perfect: HoleResult[] = MULTIPLIERS.map((_, i) => ({ courseId: `c${i}`, guess: [0, 0], distanceKm: 0, points: 100 }));
     expect(roundTotal(perfect)).toBe(1000);
+  });
+});
+
+describe("quips", () => {
+  it("has lines for every rating and picks one deterministically", () => {
+    for (const r of RATINGS) {
+      expect(QUIPS[r.key].length, r.key).toBeGreaterThan(0);
+      const line = quipFor(r, "augusta-national");
+      expect(QUIPS[r.key]).toContain(line);
+      expect(quipFor(r, "augusta-national")).toBe(line);
+    }
   });
 });
 

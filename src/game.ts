@@ -73,6 +73,23 @@ export function ratingFor(points: number): Rating {
   return RATINGS.find((r) => points >= r.min) ?? RATINGS[RATINGS.length - 1];
 }
 
+/** Shown with each reveal, like a playing partner's comment. */
+export const QUIPS: Record<Rating["key"], string[]> = {
+  ace: ["In the cup!", "Hole-in-one. Drinks are on you.", "Flag hunter!"],
+  eagle: ["Stiffed it. Tap-in range.", "Pin-high and close.", "That's a kick-in."],
+  birdie: ["On the green with a look at birdie.", "Nice approach.", "Found the dance floor."],
+  par: ["Fairway, green, two putts.", "Solid. Par is a good score.", "Safely on the fringe."],
+  bogey: ["In the rough, but playable.", "A little wayward off the tee.", "Short-sided. Tough up-and-down."],
+  double: ["Wrong fairway entirely.", "Somewhere in the trees.", "Hitting three from the tee."],
+  lost: ["Lost ball. Reload!", "That's in the water.", "Out of bounds, stroke and distance."],
+};
+
+/** Picks a quip for a hole; the same course and rating always get the same line. */
+export function quipFor(rating: Rating, courseId: string): string {
+  const lines = QUIPS[rating.key];
+  return lines[hashString(courseId) % lines.length];
+}
+
 // ── Seeded randomness ──────────────────────────────────────────
 
 export function hashString(s: string): number {

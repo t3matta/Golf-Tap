@@ -39,6 +39,13 @@
   --cup: rgba(10, 24, 16, 0.8);
   --arc: #ffffff;
 
+  /* Overlays on the satellite imagery (same in both themes: the photo doesn't change). */
+  --sat-border: rgba(255, 255, 255, 0.42);
+  --sat-state: rgba(255, 255, 255, 0.28);
+  --sat-rim: rgba(255, 255, 255, 0.18);
+  --highlight-fill: rgba(240, 185, 42, 0.2);
+  --highlight-stroke: rgba(246, 206, 92, 0.95);
+
   --font-display: "Archivo", "Arial Narrow", "Helvetica Neue", system-ui, sans-serif;
   --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-hand: "Caveat", "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive;
@@ -183,6 +190,10 @@ button {
 
 .globe.is-dragging {
   cursor: grabbing;
+}
+
+.globe-sat {
+  pointer-events: none;
 }
 
 .globe:focus-visible {
@@ -333,6 +344,127 @@ button {
   height: 36px;
 }
 
+/* ── Score & reveal label ──────────────────────────────── */
+
+/* Leaderboard-style running total, like the hand-turned boards at a tournament. */
+.score-chip {
+  position: absolute;
+  left: var(--gutter);
+  top: calc(env(safe-area-inset-top, 0px) + var(--topbar-h) + 4px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 72px;
+  padding: 6px 12px 8px;
+  border-radius: 12px;
+  background: var(--club);
+  color: var(--club-ink);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+
+.score-label {
+  font-family: var(--font-display);
+  font-stretch: 85%;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.score-num {
+  font-family: var(--font-display);
+  font-stretch: 78%;
+  font-weight: 850;
+  font-size: 30px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-chip.is-bumping {
+  animation: bump 0.5s ease-out;
+}
+
+@keyframes bump {
+  40% {
+    transform: scale(1.08);
+  }
+}
+
+/* Floats next to the flag on the globe after each guess. */
+.reveal-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 220px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  will-change: transform;
+  animation: tag-in 0.25s ease-out;
+}
+
+@keyframes tag-in {
+  from {
+    opacity: 0;
+    scale: 0.92;
+  }
+}
+
+.tag-rating {
+  font-family: var(--font-display);
+  font-stretch: 80%;
+  font-weight: 850;
+  font-size: 20px;
+  line-height: 1.05;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.tag-rating.under {
+  color: var(--under);
+}
+
+.tag-rating.over {
+  color: var(--over);
+}
+
+.tag-points {
+  font-family: var(--font-display);
+  font-stretch: 85%;
+  font-weight: 600;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.tag-points b {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.tag-dist {
+  font-size: 13px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.tag-quip {
+  margin-top: 2px;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--ink);
+}
+
 /* ── Hole card ─────────────────────────────────────────── */
 
 .card {
@@ -452,76 +584,35 @@ button {
   text-wrap: balance;
 }
 
-.clue {
+.reveal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--rule);
+}
+
+.where {
+  margin: 0;
+  font-weight: 600;
+}
+
+.fact {
   margin: 0;
   color: var(--ink-2);
   max-width: 60ch;
 }
 
-.result {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-top: 10px;
-  border-top: 1px dashed var(--rule);
-}
-
-.result-top {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.rating {
-  font-family: var(--font-display);
-  font-stretch: 80%;
-  font-weight: 800;
-  font-size: 22px;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-
-.rating.under {
-  color: var(--under);
-}
-
-.rating.over {
-  color: var(--over);
-}
-
-.points {
-  font-family: var(--font-display);
-  font-stretch: 85%;
-  font-weight: 600;
-  color: var(--ink-2);
-  font-variant-numeric: tabular-nums;
-}
-
-.points b {
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--ink);
-}
-
-.points-x {
-  margin-left: 6px;
-}
-
-.where {
-  margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: 8px;
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.distance {
-  color: var(--ink-2);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .card-actions {
@@ -541,6 +632,8 @@ button {
 
 .btn {
   appearance: none;
+  position: relative;
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -573,6 +666,29 @@ button {
 .btn.primary:hover:not(:disabled) {
   background: var(--club-hover);
   border-color: var(--club-hover);
+}
+
+.btn-label {
+  position: relative;
+}
+
+/* The countdown to the next hole fills the button from the left. */
+.btn-fill {
+  position: absolute;
+  inset: 0;
+  transform: scaleX(0);
+  transform-origin: left center;
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.btn.is-counting .btn-fill {
+  animation: btn-fill var(--advance-ms, 6s) linear forwards;
+}
+
+@keyframes btn-fill {
+  to {
+    transform: scaleX(1);
+  }
 }
 
 .btn:disabled {
@@ -1085,6 +1201,13 @@ button {
   grid-column: 2 / span 2;
   font-size: 13px;
   color: var(--ink-2);
+}
+
+.sc-courses .fact-line {
+  grid-column: 2 / span 2;
+  font-size: 13px;
+  color: var(--ink);
+  opacity: 0.8;
 }
 
 .sc-total {

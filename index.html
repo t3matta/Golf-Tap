@@ -19,6 +19,7 @@
   </head>
   <body>
     <div class="app">
+      <canvas id="globe-sat" class="globe globe-sat" aria-hidden="true"></canvas>
       <canvas
         id="globe"
         class="globe"
@@ -51,6 +52,18 @@
         </nav>
       </header>
 
+      <div class="score-chip" id="score-chip">
+        <span class="score-label">Score</span>
+        <span class="score-num" id="score-num">000</span>
+      </div>
+
+      <div class="reveal-tag" id="reveal-tag" aria-hidden="true" hidden>
+        <span class="tag-rating" id="tag-rating"></span>
+        <span class="tag-points" id="tag-points"></span>
+        <span class="tag-dist" id="tag-dist"></span>
+        <span class="tag-quip" id="tag-quip"></span>
+      </div>
+
       <div class="zoom" role="group" aria-label="Zoom">
         <button type="button" id="zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button>
         <button type="button" id="zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /></svg></button>
@@ -67,19 +80,18 @@
           <ol class="pips" id="pips" aria-label="Holes played"></ol>
         </div>
         <h1 class="course" id="course-name">Loading the course list…</h1>
-        <p class="clue" id="clue"></p>
-
-        <div class="result" id="result" aria-live="polite" hidden>
-          <div class="result-top">
-            <span class="rating" id="rating"></span>
-            <span class="points"><b id="points"></b> pts<span class="points-x" id="points-x"></span></span>
-          </div>
-          <p class="where"><span id="where"></span><span class="distance" id="distance"></span></p>
+        <div class="reveal" id="reveal" hidden>
+          <p class="where" id="where"></p>
+          <p class="fact" id="fact"></p>
         </div>
+        <p class="sr-only" id="result-sr" aria-live="polite"></p>
 
         <div class="card-actions">
           <p class="hint" id="hint">Tap the globe to drop your ball.</p>
-          <button class="btn primary" id="btn-go" type="button" disabled>Lock it in</button>
+          <button class="btn primary" id="btn-go" type="button" disabled>
+            <span class="btn-fill" id="btn-fill" aria-hidden="true"></span>
+            <span class="btn-label" id="btn-go-label">Lock it in</span>
+          </button>
         </div>
       </section>
 
@@ -90,9 +102,9 @@
       <button class="close" type="button" data-close aria-label="Close">×</button>
       <h2 id="help-title">How to play</h2>
       <ol class="steps">
-        <li><b>Read the course.</b> Every day there are five famous golf courses, the same for every player.</li>
+        <li><b>Read the course name.</b> Every day there are five famous golf courses, the same for every player.</li>
         <li><b>Spin and zoom the globe,</b> then tap where you think the course is. Your first tap is your guess, so spin first and tap once. Prefer a confirm step? Turn on <i>Confirm each guess</i> in Settings.</li>
-        <li><b>Watch the flag drop</b> on the real spot. The closer your ball, the more points, up to 100.</li>
+        <li><b>Watch the flag drop</b> on the real spot and read a fact about the course. The closer your ball, the more points, up to 100. The next hole tees off a few seconds later; touch the globe to stay and look around.</li>
         <li><b>The back tees count more.</b> Holes 1–2 play from the white tees (×1), hole 3 from the blue tees (×2), and holes 4–5 from the tips (×3). A perfect round is 1,000.</li>
       </ol>
       <h3>Scoring</h3>
@@ -141,7 +153,7 @@
       <ol class="sc-courses" id="sc-courses"></ol>
       <div class="sc-total"><span class="sc-total-label">Total</span><span class="sc-total-num" id="sc-total"></span><span class="sc-total-max">/ 1000</span></div>
       <div class="sc-actions">
-        <button class="btn primary" type="button" id="btn-share">Copy result</button>
+        <button class="btn primary" type="button" id="btn-share">Share results</button>
         <button class="btn" type="button" id="btn-next-mode">Practice round</button>
       </div>
       <textarea class="share-fallback" id="share-fallback" rows="3" readonly hidden aria-label="Result to copy"></textarea>
