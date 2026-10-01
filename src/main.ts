@@ -731,9 +731,15 @@ function onPrimary(): void {
   }
 }
 
+/** Opens a sheet scrolled to the top, whatever it showed last time. */
+function openSheet(dlg: HTMLDialogElement): void {
+  dlg.showModal();
+  dlg.scrollTop = 0;
+}
+
 function openScorecard(): void {
   renderScorecard();
-  el.dlgCard.showModal();
+  openSheet(el.dlgCard);
 }
 
 async function shareResult(): Promise<void> {
@@ -803,11 +809,11 @@ el.zoomReset.addEventListener("click", () => globe.resetView());
 el.btnMode.addEventListener("click", () => (session.mode === "daily" ? startPractice() : startDaily()));
 el.btnHelp.addEventListener("click", () => {
   renderHelp();
-  el.dlgHelp.showModal();
+  openSheet(el.dlgHelp);
 });
 el.btnStats.addEventListener("click", () => {
   renderStats();
-  el.dlgStats.showModal();
+  openSheet(el.dlgStats);
 });
 el.btnShare.addEventListener("click", () => void shareResult());
 el.btnNextMode.addEventListener("click", () => {

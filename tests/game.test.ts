@@ -180,10 +180,20 @@ describe("course data", () => {
   });
 
   it("has no accidental duplicates at the same spot", () => {
+    // Sister courses that share a club's grounds (and usually its clubhouse).
+    const sharedGrounds = new Set([
+      "baltusrol|baltusrol-upper",
+      "royal-melbourne|royal-melbourne-east",
+      "sunningdale-new|sunningdale-old",
+      "te-arai-north|te-arai-south",
+      "turnberry|turnberry-king-robert",
+    ]);
     for (let i = 0; i < COURSES.length; i++) {
       for (let j = i + 1; j < COURSES.length; j++) {
+        const pair = [COURSES[i].id, COURSES[j].id].sort().join("|");
+        if (sharedGrounds.has(pair)) continue;
         const d = distanceKm([COURSES[i].lon, COURSES[i].lat], [COURSES[j].lon, COURSES[j].lat]);
-        expect(d, `${COURSES[i].id} vs ${COURSES[j].id}`).toBeGreaterThan(0.5);
+        expect(d, pair).toBeGreaterThan(0.5);
       }
     }
   });

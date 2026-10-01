@@ -62,7 +62,9 @@ Set `VITE_SHARE_URL` at build time to control the link in the share text. By def
 
 ### Adding courses
 
-Add entries to `COURSES` in `src/courses.ts`. Keep clues free of the town name, and set `tier` to 1 (famous), 2 (known to golf fans) or 3 (deep cut). Coordinates should point at the clubhouse or course. The tests check for valid coordinates, unique ids and accidental duplicates.
+Add entries to `COURSES` in `src/courses.ts`. Keep clues free of the town name, and set `tier` to 1 (famous), 2 (known to golf fans) or 3 (deep cut). Coordinates should point at the clubhouse or course. The tests check for valid coordinates, unique ids and accidental duplicates; sister courses that share a club's grounds are listed as exceptions in the duplicate test.
+
+The list holds 293 courses: the original hand-picked set plus every course in GOLF's Top 100 in the World (2025–26) and its Nos. 101–150, GOLF's Top 100 in the U.S. (2024–25), and Golf Digest's World's 100 Greatest (2026–27) and America's 100 Greatest (2025–26). Their coordinates come from OpenStreetMap; a few courses missing from the map are placed at their town, within a few km.
 
 Changing the course list reshuffles the daily schedule from the next puzzle on. A round that's already in progress keeps its saved courses.
 
