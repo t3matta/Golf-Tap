@@ -123,7 +123,20 @@ const imagery = [earth4k];
 if (import.meta.env.MODE !== "single" && window.matchMedia("(pointer: fine)").matches) {
   imagery.push(`${import.meta.env.BASE_URL}textures/earth-8k.jpg`);
 }
-const globe = new Globe(el.canvas, { canvas: el.satCanvas, sources: imagery });
+// Sharper tiles stream in as you zoom (same 2025 imagery, from EOX's tile server). The
+// single-file build can't reach other hosts, so it keeps the whole-Earth texture only.
+const TILE_URL: string =
+  import.meta.env.VITE_TILE_URL || "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2025/default/WGS84/{z}/{y}/{x}.jpg";
+const tiles =
+  import.meta.env.MODE === "single"
+    ? undefined
+    : {
+        url: (z: number, row: number, col: number) =>
+          TILE_URL.replace("{z}", String(z)).replace("{y}", String(row)).replace("{x}", String(col)),
+        maxZoom: 14,
+      };
+const globe = new Globe(el.canvas, { canvas: el.satCanvas, sources: imagery, tiles });
+if (import.meta.env.VITE_DEBUG_HOOKS) (window as unknown as { __globe: Globe }).__globe = globe;
 globe.onRender = positionTag;
 globe.onInteract = () => {
   // Exploring the revealed spot pauses the countdown to the next hole.

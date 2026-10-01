@@ -51,7 +51,8 @@ Set `VITE_SHARE_URL` at build time to control the link in the share text. By def
 | `src/courses.ts` | The course list: name, location, coordinates, clue, difficulty tier |
 | `src/game.ts` | Distance, scoring, ratings, daily puzzle selection, share text |
 | `src/globe.ts` | Canvas globe (d3-geo orthographic): drag/pinch/scroll, tap to guess, flags and flight arcs |
-| `src/satellite.ts` | WebGL layer that paints satellite imagery onto the globe under the 2D canvas |
+| `src/satellite.ts` | WebGL layer that paints satellite imagery onto the globe under the 2D canvas, streaming sharper tiles as you zoom |
+| `src/tiles.ts` | Tile-grid maths for the streamed imagery (which zoom level and tiles cover the view) |
 | `src/geo.ts` | Which country a point is in (for the right-country bonus and highlight) |
 | `src/storage.ts` | Saved progress, history and stats |
 | `src/main.ts` | Game flow and UI |
@@ -64,6 +65,6 @@ Changing the course list reshuffles the daily schedule from the next puzzle on. 
 
 ## Data
 
-- Satellite imagery: [EOxCloudless 2025](https://cloudless.eox.at) (Sentinel-2 cloudless) by EOX IT Services GmbH, containing modified Copernicus Sentinel data 2025, licensed [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). It's stitched from EOX's WGS84 tiles at zoom 4 into an 8K equirectangular texture (`public/textures`, loaded on desktops) and a 4K copy (`src/assets`). **The licence is non-commercial**: using GolfTap commercially (ads, paid features) needs a commercial licence from EOX or different imagery. Without WebGL the globe falls back to flat vector colours.
-- Map: [Natural Earth](https://www.naturalearthdata.com/) via [world-atlas](https://github.com/topojson/world-atlas) (countries, 50m/110m), [us-atlas](https://github.com/topojson/us-atlas) (US states) and [geo-maps](https://github.com/simonepri/geo-maps) (lakes). All are bundled, so no map API keys or tile servers are needed.
+- Satellite imagery: [EOxCloudless 2025](https://cloudless.eox.at) (Sentinel-2 cloudless) by EOX IT Services GmbH, containing modified Copernicus Sentinel data 2025, licensed [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). It's stitched from EOX's WGS84 tiles at zoom 4 into an 8K equirectangular texture (`public/textures`, loaded on desktops) and a 4K copy (`src/assets`). Zoomed in past that, the globe streams EOX's tiles for the area on screen live from `tiles.maps.eox.at`, down to zoom 14 (about 5 m per pixel), so courses resolve hole by hole; set `VITE_TILE_URL` (`{z}`, `{y}`, `{x}`) at build time to use another server with the same WGS84 grid. The single-file build leaves streaming out. **The licence is non-commercial**: using GolfTap commercially (ads, paid features) needs a commercial licence from EOX or different imagery. Without WebGL the globe falls back to flat vector colours.
+- Map: [Natural Earth](https://www.naturalearthdata.com/) via [world-atlas](https://github.com/topojson/world-atlas) (countries, 50m/110m), [us-atlas](https://github.com/topojson/us-atlas) (US states) and [geo-maps](https://github.com/simonepri/geo-maps) (lakes). All are bundled, so no map API keys are needed.
 - Course coordinates were compiled by hand and are accurate to within a few kilometres. Corrections are welcome.

@@ -18,7 +18,8 @@ import world110Json from "world-atlas/countries-110m.json";
 import usJson from "us-atlas/states-10m.json";
 import lakesJson from "@geo-maps/earth-lakes-10km/map.geo.json";
 import type { LonLat } from "./game";
-import { SatelliteLayer } from "./satellite";
+import { SatelliteLayer, type TileSource } from "./satellite";
+import { windowFor, zoomForResolution, type Bounds } from "./tiles";
 
 type WorldTopo = Topology<{ countries: GeometryCollection; land: GeometryCollection }>;
 type UsTopo = Topology<{ states: GeometryCollection; nation: GeometryCollection }>;
@@ -153,7 +154,10 @@ const COLOR_VARS: Record<keyof Colors, string> = {
 };
 
 const MIN_ZOOM = 0.85;
+/** Zoom limit for the flat vector globe, which has no detail to zoom into. */
 const MAX_ZOOM = 90;
+/** With streamed imagery: the deepest view, as a globe radius in CSS px (about 5 m per px). */
+const MAX_RADIUS_TILES_PX = 1.3e6;
 const TAP_SLOP_PX = 8;
 const TAP_MAX_MS = 700;
 /** Touch taps this soon after a drag or pinch are treated as part of it, not a guess. */
@@ -239,7 +243,10 @@ export class Globe {
    * `imagery` paints satellite textures on a WebGL canvas under this one. Without WebGL
    * (or until the first texture loads) the globe falls back to flat vector colours.
    */
-  constructor(canvas: HTMLCanvasElement, imagery?: { canvas: HTMLCanvasElement; sources: string[] }) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    imagery?: { canvas: HTMLCanvasElement; sources: string[]; tiles?: TileSource },
+  ) {
     this.canvas = canvas;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas 2D is not available in this browser.");
@@ -252,6 +259,8 @@ export class Globe {
       if (sat.init()) {
         this.sat = sat;
         sat.onReady = () => this.requestDraw();
+        sat.onUpdate = () => this.requestDraw();
+        sat.setTileSource(imagery.tiles ?? null);
         void sat.loadSources(imagery.sources);
       }
     }
@@ -295,9 +304,10 @@ export class Globe {
     this.stopMotion();
     const from = this.center;
     const angle = geoDistance(from, center);
-    const zoomTo = clamp(zoom, MIN_ZOOM, MAX_ZOOM);
+    const zoomTo = clamp(zoom, MIN_ZOOM, this.maxZoom);
     if (reducedMotion() || duration <= 0) {
       this.setView(center, zoomTo);
+      this.requestDraw();
       done?.();
       return;
     }
@@ -381,12 +391,17 @@ export class Globe {
     return Math.max(120, this.width - this.insets.left);
   }
 
+  /** Streamed imagery can zoom almost to street level; the vector globe stops much sooner. */
+  private get maxZoom(): number {
+    return this.sat?.ready && this.sat.hasTiles ? Math.max(MAX_ZOOM, MAX_RADIUS_TILES_PX / this.baseScale) : MAX_ZOOM;
+  }
+
   private get baseScale(): number {
     return (Math.min(this.visibleWidth, this.visibleHeight) / 2) * 0.9;
   }
 
   private setView(center: LonLat, zoom: number): void {
-    this.zoom = clamp(zoom, MIN_ZOOM, MAX_ZOOM);
+    this.zoom = clamp(zoom, MIN_ZOOM, this.maxZoom);
     this.projection.rotate([-center[0], -center[1]]).scale(this.baseScale * this.zoom);
   }
 
@@ -398,7 +413,7 @@ export class Globe {
 
   private zoomAt(factor: number, px: number, py: number): void {
     const anchor = this.invert(px, py);
-    this.zoom = clamp(this.zoom * factor, MIN_ZOOM, MAX_ZOOM);
+    this.zoom = clamp(this.zoom * factor, MIN_ZOOM, this.maxZoom);
     this.projection.scale(this.baseScale * this.zoom);
     if (!anchor) return;
     // Nudge the rotation so the point under the cursor stays put.
@@ -591,7 +606,7 @@ export class Globe {
   }
 
   private onKey(e: KeyboardEvent): void {
-    const step = 60 / Math.sqrt(this.zoom);
+    const step = 50;
     const moves: Record<string, [number, number]> = {
       ArrowLeft: [step, 0],
       ArrowRight: [-step, 0],
@@ -715,15 +730,18 @@ export class Globe {
     if (this.sat?.ready) {
       const [lambda, phi] = projection.rotate();
       this.sat.render({ cx, cy, radius: r, lambda, phi });
-      // The imagery already shows land and water. Borders fade in once zoomed in,
-      // to help pin down a spot.
-      if (this.zoom > 2.2) {
+      this.updateDetail();
+      // The imagery already shows land and water. Borders appear once zoomed in, to help
+      // pin down a spot, and drop out again near ground level where the simplified
+      // outlines would visibly miss the coastline.
+      const kmPerPx = 6371 / r;
+      if (this.zoom > 2.2 && kmPerPx > 1.2) {
         drawPieces(layer.borders);
         ctx.strokeStyle = c.satBorder;
         ctx.lineWidth = this.zoom > 6 ? 1.2 : 0.8;
         ctx.stroke();
       }
-      if (this.zoom > 3.5) {
+      if (this.zoom > 3.5 && kmPerPx > 0.6) {
         drawPieces(STATES);
         ctx.strokeStyle = c.satState;
         ctx.lineWidth = 0.7;
@@ -803,6 +821,53 @@ export class Globe {
       ctx.stroke();
     }
     this.onRender?.();
+  }
+
+  /** Asks for sharper tiles covering the screen once the whole-Earth texture runs out of detail. */
+  private updateDetail(): void {
+    const sat = this.sat;
+    if (!sat?.hasTiles) return;
+    const satDpr = Math.min(this.dpr, 2);
+    const degPerPx = 180 / (Math.PI * this.projection.scale()) / satDpr;
+    const z = zoomForResolution(degPerPx, sat.maxTileZoom);
+    const bounds = z > sat.baseZoom ? this.visibleBounds() : null;
+    const win = bounds ? windowFor(bounds, z, sat.slotsX, sat.slotsY) : null;
+    // A view too wide for the tile budget falls back to tiles no sharper than the base; skip those.
+    sat.setWindow(win && win.z > sat.baseZoom ? win : null);
+  }
+
+  /** Lon/lat extent of what's on screen, or null when it isn't a compact area (e.g. a pole). */
+  private visibleBounds(): Bounds | null {
+    const [clon] = this.center;
+    const n = 9;
+    let lonMin = Infinity;
+    let lonMax = -Infinity;
+    let latMin = Infinity;
+    let latMax = -Infinity;
+    let hits = 0;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const p = this.invert((this.width * i) / (n - 1), (this.height * j) / (n - 1));
+        if (!p) continue;
+        hits++;
+        // Unwrap longitudes around the view centre so a view across ±180° stays contiguous.
+        const lon = clon + ((((p[0] - clon) % 360) + 540) % 360) - 180;
+        lonMin = Math.min(lonMin, lon);
+        lonMax = Math.max(lonMax, lon);
+        latMin = Math.min(latMin, p[1]);
+        latMax = Math.max(latMax, p[1]);
+      }
+    }
+    if (hits < 4 || latMax > 88 || latMin < -88 || lonMax - lonMin > 150) return null;
+    // Samples miss the strip between grid points and the limb; pad a little.
+    const padLon = (lonMax - lonMin) * 0.08;
+    const padLat = (latMax - latMin) * 0.08;
+    return {
+      lonMin: lonMin - padLon,
+      lonMax: lonMax + padLon,
+      latMin: Math.max(-90, latMin - padLat),
+      latMax: Math.min(90, latMax + padLat),
+    };
   }
 
   /** Returns a test for whether a piece's cap can reach the visible part of the globe. */
