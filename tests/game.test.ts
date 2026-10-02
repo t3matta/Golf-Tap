@@ -12,6 +12,7 @@ import {
   distanceKm,
   formatDistance,
   formatToPar,
+  holeScore,
   holeToPar,
   msUntilNextDay,
   practiceCourses,
@@ -75,7 +76,10 @@ describe("scoring", () => {
     }
   });
 
-  it("turns points into strokes to par, times the multiplier", () => {
+  it("scores each hole on its own, and multiplies only toward the total", () => {
+    expect(holeScore(100)).toBe(-50);
+    expect(holeScore(50)).toBe(0);
+    expect(holeScore(0)).toBe(50);
     expect(holeToPar(100, 1)).toBe(-50);
     expect(holeToPar(50, 1)).toBe(0);
     expect(holeToPar(0, 1)).toBe(50);
@@ -262,7 +266,7 @@ describe("sharing & formatting", () => {
     const results: HoleResult[] = pts.map((p, i) => ({ courseId: `c${i}`, guess: [0, 0], distanceKm: 1, points: p }));
     const text = shareText({ date: new Date(2026, 8, 30), results, url: "https://example.com/golftap/" });
     expect(text).toBe(
-      ["GolfTap September 30", "−50🏆 −38🐦 −44🐦 E⛳ +120🟠", "Final score: −12", "https://example.com/golftap/"].join("\n"),
+      ["GolfTap September 30", "−50🏆 −38🐦 −22🐦 E⛳ +40🟠", "Final score: −12", "https://example.com/golftap/"].join("\n"),
     );
     expect(shareText({ date: null, results })).toMatch(/^GolfTap practice round\n/);
   });

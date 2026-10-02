@@ -53,12 +53,19 @@ export function withCountryBonus(points: number, sameCountry: boolean): number {
 }
 
 /**
- * Golf scoring: a hole's points (0–100) become strokes to par, lower is better. 100 points
- * is 50 under, 50 is level par and 0 is 50 over, times the hole's multiplier. It mirrors
- * the points: a round's score is always 500 minus its points total.
+ * Golf scoring: a hole's points (0–100) become its score to par, lower is better. 100 points
+ * is 50 under, 50 is level par and 0 is 50 over. This is the score shown for each hole.
+ */
+export function holeScore(points: number): number {
+  return 50 - points;
+}
+
+/**
+ * What a hole adds to the round: its score times the hole's multiplier. Only totals use it,
+ * so a round's score is always 500 minus its points total.
  */
 export function holeToPar(points: number, multiplier: number): number {
-  return multiplier * (50 - points);
+  return multiplier * holeScore(points);
 }
 
 /** Strokes to par for the holes played so far. */
@@ -245,18 +252,15 @@ export interface HoleResult {
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 /**
- * MapTap-style share text, in strokes to par:
+ * MapTap-style share text: each hole's own score, then the round total with the
+ * multipliers applied.
  *   GolfTap September 30
- *   −50🏆 −38🐦 −44🐦 E⛳ +120🟠
+ *   −50🏆 −38🐦 −22🐦 E⛳ +40🟠
  *   Final score: −12
  *   https://…
  */
 export function shareText(opts: { date: Date | null; results: HoleResult[]; url?: string }): string {
   const title = opts.date ? `GolfTap ${MONTHS[opts.date.getMonth()]} ${opts.date.getDate()}` : "GolfTap practice round";
-  const holes = opts.results
-    .map((r, i) => {
-      return `${formatToPar(holeToPar(r.points, MULTIPLIERS[i]))}${ratingFor(r.points).emoji}`;
-    })
-    .join(" ");
+  const holes = opts.results.map((r) => `${formatToPar(holeScore(r.points))}${ratingFor(r.points).emoji}`).join(" ");
   return [title, holes, `Final score: ${formatToPar(roundToPar(opts.results))}`, opts.url].filter(Boolean).join("\n");
 }

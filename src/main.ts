@@ -12,6 +12,7 @@ import {
   distanceKm,
   formatDistance,
   formatToPar,
+  holeScore,
   holeToPar,
   msUntilNextDay,
   practiceCourses,
@@ -196,8 +197,9 @@ function markClass(r: Rating): string {
 }
 
 /** A played hole's strokes to par and the name that goes with them. */
-function scoreOf(r: HoleResult, index: number): { toPar: number; rating: Rating } {
-  return { toPar: holeToPar(r.points, MULTIPLIERS[index]), rating: ratingFor(r.points) };
+function scoreOf(r: HoleResult, index: number): { score: number; toPar: number; rating: Rating } {
+  // `score` is shown for the hole; `toPar` (score × multiplier) only goes into totals.
+  return { score: holeScore(r.points), toPar: holeToPar(r.points, MULTIPLIERS[index]), rating: ratingFor(r.points) };
 }
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -263,10 +265,10 @@ function renderPips(): void {
     const li = document.createElement("li");
     const r = session.results[i];
     if (r) {
-      const { toPar, rating } = scoreOf(r, i);
+      const { score, rating } = scoreOf(r, i);
       li.className = `is-done ${ratingTone(rating)}`;
-      li.textContent = formatToPar(toPar);
-      li.setAttribute("aria-label", `Hole ${i + 1}: ${rating.label}, ${spokenToPar(toPar)}`);
+      li.textContent = formatToPar(score);
+      li.setAttribute("aria-label", `Hole ${i + 1}: ${rating.label}, ${spokenToPar(score)}`);
     } else {
       li.textContent = String(i + 1);
       if (i === idx && session.phase !== "done") li.className = "is-current";
@@ -351,20 +353,20 @@ function onLanded(): void {
   const r = session.results[idx];
   const course = session.courses[idx];
   const m = MULTIPLIERS[idx];
-  const { toPar, rating } = scoreOf(r, idx);
+  const { score, rating } = scoreOf(r, idx);
   // Strokes the right-country bonus took off.
-  const saved = holeToPar(scoreForDistance(r.distanceKm), m) - toPar;
+  const saved = holeScore(scoreForDistance(r.distanceKm)) - score;
   const countryNote = r.sameCountry ? (saved > 0 ? ` · right country ${formatToPar(-saved)}` : " · right country") : "";
 
   el.tagRating.textContent = rating.label;
   el.tagRating.className = `tag-rating ${ratingTone(rating)}`;
-  el.tagPoints.innerHTML = `<b>${formatToPar(toPar)}</b>${m > 1 ? ` on a ×${m} hole` : ""}`;
+  el.tagPoints.innerHTML = `<b>${formatToPar(score)}</b>${m > 1 ? ` · counts ×${m}` : ""}`;
   el.tagDist.textContent = `${formatDistance(r.distanceKm, units)} away${countryNote}`;
   el.tagQuip.textContent = `“${quipFor(rating, course.id)}”`;
   tagAnchor = answerOf(course);
   el.tag.hidden = false;
   positionTag();
-  el.resultSr.textContent = `${rating.label}: ${spokenToPar(toPar)}${m > 1 ? ` on a times ${m} hole` : ""}. ${formatDistance(
+  el.resultSr.textContent = `${rating.label}: ${spokenToPar(score)}${m > 1 ? `, counted ${m} times` : ""}. ${formatDistance(
     r.distanceKm,
     units,
   )} away. ${course.place}, ${course.country}.`;
@@ -480,19 +482,15 @@ const HELP_EXAMPLES: { km: number; mi: number }[] = [
 ];
 
 function renderHelp(): void {
-  const tees = [...new Set(MULTIPLIERS)];
   const row = (label: string, km: number) => {
     const points = scoreForDistance(km);
     const rating = ratingFor(points);
-    const cells = tees.map((m) => `<td class="num">${formatToPar(holeToPar(points, m))}</td>`).join("");
-    return `<tr><td class="${ratingTone(rating)}">${rating.label}</td><td>${label}</td>${cells}</tr>`;
+    return `<tr><td class="${ratingTone(rating)}">${rating.label}</td><td>${label}</td><td class="num">${formatToPar(holeScore(points))}</td></tr>`;
   };
   const ace = distanceForScore(100);
   // Past this, a ball scores nothing; in miles, round it up to a tidy figure.
   const far = units === "mi" ? (Math.ceil((SCORE_RANGE_KM * 0.621371) / 100) * 100) / 0.621371 : SCORE_RANGE_KM;
-  el.ratingsHead.innerHTML = `<tr><th scope="col">Result</th><th scope="col">Ball off by</th>${tees
-    .map((m) => `<th scope="col" class="num">×${m}</th>`)
-    .join("")}</tr>`;
+  el.ratingsHead.innerHTML = `<tr><th scope="col">Result</th><th scope="col">Ball off by</th><th scope="col" class="num">Score</th></tr>`;
   el.ratingsBody.innerHTML = [
     row(`under ${formatDistance(ace, units)}`, 0),
     ...HELP_EXAMPLES.map((e) => {
@@ -555,11 +553,11 @@ function renderScorecard(): void {
     .map((i) => {
       const r = results[i];
       if (!r) return "<td></td>";
-      const { toPar, rating } = scoreOf(r, i);
-      return `<td><span class="${markClass(rating)}">${formatToPar(toPar)}</span></td>`;
+      const { score, rating } = scoreOf(r, i);
+      return `<td><span class="${markClass(rating)}">${formatToPar(score)}</span></td>`;
     })
     .join("");
-  // Running score to par after each hole, as on a tournament card.
+  // Running total after each hole, as on a tournament card: the one row with multipliers.
   let running = 0;
   const runningCells = holes
     .map((i) => {
